@@ -1,0 +1,10 @@
+# This file can be used to define multiple pipelines. Each pipeline must have a unique ID and a path to its configuration file. 
+
+- pipeline.id: app_pipeline
+  path.config: "/usr/share/logstash/pipeline/app.conf"
+
+- pipeline.id: logs_pipeline
+  path.config: "/usr/share/logstash/pipeline/log.conf"
+
+# metrics_pipeline:
+#   path.config: "/usr/share/logstash/pipeline/metrics.conf"

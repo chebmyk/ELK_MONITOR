@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<datasources>
+    <datasource>
+        <name>app_mock_v1_datasource</name>
+        <driver>com.mysql.jdbc.Driver</driver>
+        <url>jdbc:mysql://localhost:3306/app_mock_v1_db</url>
+        <username>app_user</username>
+        <password>secure_pass_v1</password>
+        <pool_size>15</pool_size>
+    </datasource>
+</datasources>

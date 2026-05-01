@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.12.2
+    container_name: logstash
+    command: >
+      bash -c "
+      /usr/share/logstash/bin/logstash-plugin update logstash-input-beats &&
+      /usr/share/logstash/bin/logstash
+      "
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+    ports:
+      - "5050:5050"
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  app_mock_v1:
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+    container_name: app_mock_v1
+    volumes:
+      - ./apps/app_mock_v1:/app
+      - ./apps/app_mock_v1/logs:/var/log/app_mock
+    depends_on:
+      - elasticsearch
+    networks:
+      - default
+
+  app_mock_v2:
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+    container_name: app_mock_v2
+    volumes:
+      - ./apps/app_mock_v2:/app
+      - ./apps/app_mock_v2/logs:/var/log/app_mock
+    depends_on:
+      - elasticsearch
+    networks:
+      - default
+
+volumes:
+  esdata:
