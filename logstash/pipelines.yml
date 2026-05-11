@@ -1,10 +1,9 @@
-# This file can be used to define multiple pipelines. Each pipeline must have a unique ID and a path to its configuration file. 
-
+# app_pipeline: single beats input on port 5050.
+# Handles heartbeats + XML configs; forwards app_log events to logs_pipeline
+# via pipeline-to-pipeline (no port conflict).
 - pipeline.id: app_pipeline
   path.config: "/usr/share/logstash/pipeline/app.conf"
 
+# logs_pipeline: receives app_log events from app_pipeline internal queue.
 - pipeline.id: logs_pipeline
   path.config: "/usr/share/logstash/pipeline/log.conf"
-
-# metrics_pipeline:
-#   path.config: "/usr/share/logstash/pipeline/metrics.conf"

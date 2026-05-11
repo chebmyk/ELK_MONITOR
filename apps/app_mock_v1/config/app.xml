@@ -4,4 +4,5 @@
     <version>3.0.2</version>
     <description>Mock application v1 for testing</description>
     <environment>staging</environment>
+    <appfolder>/opt/apps/app_mock_v1</appfolder>
 </app>

@@ -6,22 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Start all services
-docker compose up -d
-
-# Start specific service
-docker compose up -d logstash
-
-# Tail Logstash logs (pipeline errors surface here)
-docker compose logs -f logstash
-
-# Reload after editing a pipeline config (Logstash does not hot-reload by default)
-docker compose restart logstash
-
-# Manually run Kibana data view setup (Kibana must be healthy first)
-docker compose run --rm kibana-setup
-# Or directly:
-sh kibana/setup.sh
-```
+monitor.sh
 
 Service endpoints when running locally:
 - Elasticsearch: `http://localhost:9200`

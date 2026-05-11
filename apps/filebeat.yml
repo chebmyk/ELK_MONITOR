@@ -38,30 +38,71 @@ filebeat.inputs:
     id: app-config-filebeat
     enabled: true
     paths:
-      - /app/config/*.xml
-    scan_frequency: 15s      # Check for new XML files every 15 seconds
-    #ignore_older: 30d        # Ignore very old config files
+      - /app/config/app.xml
+    scan_frequency: 15s
     fields:
       file_type: xml
       type: app_config
       app: elk_monitor
-    # Optional: prevent tracking file state if you just want latest snapshot
     clean_inactive: 24h
-
+    # Collect the full XML document as a single event (not line-by-line)
+    parsers:
+      - multiline:
+          type: pattern
+          pattern: '^\s*<\?xml'
+          negate: true
+          match: after
 
   - type: filestream
     id: db-config-filebeat
     enabled: true
     paths:
       - /app/config/db/*.xml
-    scan_frequency: 15s      # Check for new XML files every 15 seconds
-    #ignore_older: 30d        # Ignore very old config files
+    scan_frequency: 15s
     fields:
       file_type: xml
       type: app_db_config
       app: elk_monitor
-    # Optional: prevent tracking file state if you just want latest snapshot
     clean_inactive: 24h
+    parsers:
+      - multiline:
+          type: pattern
+          pattern: '^\s*<\?xml'
+          negate: true
+          match: after
+
+  # --- Config monitor: scans all XML files recursively under /app/config ---
+  # Ships only when file mtime changes; hash-based dedup in Logstash prevents
+  # false updates from formatting-only changes.
+  - type: filestream
+    id: config-monitor-filebeat
+    enabled: true
+    paths:
+      - /app/config/**/*.xml
+    scan_frequency: 30s
+    fields:
+      file_type: xml
+      type: config_monitor
+      app: elk_monitor
+    clean_inactive: 48h
+    parsers:
+      - multiline:
+          type: pattern
+          pattern: '^\s*<\?xml'
+          negate: true
+          match: after
+
+  # --- Input for JSON heartbeat lines (one line per service per cycle) ---
+  - type: filestream
+    id: app-heartbeat-filebeat
+    enabled: true
+    paths:
+      - /var/log/app_mock/heartbeat.log
+    scan_frequency: 5s
+    fields:
+      file_type: json
+      type: heartbeat
+      app: elk_monitor
   # Exclude lines. A list of regular expressions to match. It drops the lines that are
   # matching any regular expression from the list.
   # Line filtering happens after the parsers pipeline. If you would like to filter lines
