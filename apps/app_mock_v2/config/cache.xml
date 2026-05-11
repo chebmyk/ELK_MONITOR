@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cache>
+    <provider>redis</provider>
+    <host>redis-prod.internal</host>
+    <port>6380</port>
+    <ttl>600</ttl>
+    <max_connections>50</max_connections>
+    <eviction_policy>volatile-lru</eviction_policy>
+</cache>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cache>
+    <provider>redis</provider>
+    <host>redis-staging.internal</host>
+    <port>6379</port>
+    <ttl>700</ttl>
+    <max_connections>20</max_connections>
+    <eviction_policy>allkeys-lru</eviction_policy>
+</cache>

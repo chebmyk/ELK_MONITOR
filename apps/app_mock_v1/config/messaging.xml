@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<messaging>
+    <broker>rabbitmq-staging.internal</broker>
+    <port>5672</port>
+    <virtual_host>/staging</virtual_host>
+    <username>app_mock_v1</username>
+    <queues>
+        <queue name="orders" durable="true"/>
+        <queue name="notifications" durable="true"/>
+        <queue name="deadletter" durable="true"/>
+    </queues>
+    <prefetch_count>10</prefetch_count>
+</messaging>

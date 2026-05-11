@@ -4,4 +4,5 @@
     <version>2.1.5</version>
     <description>Mock application v2 for testing</description>
     <environment>production</environment>
+    <appfolder>/opt/apps/app_mock_v2</appfolder>
 </app>

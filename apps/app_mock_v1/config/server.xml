@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<server>
+    <host>0.0.0.0</host>
+    <port>8080</port>
+    <max_threads>50</max_threads>
+    <connection_timeout>30</connection_timeout>
+    <request_timeout>60</request_timeout>
+    <ssl enabled="false"/>
+</server>
