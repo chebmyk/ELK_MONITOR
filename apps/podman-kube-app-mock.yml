@@ -1,0 +1,37 @@
+# apps/podman-kube-app-mock.yml
+#
+# On-demand app_mock pod manifest for podman play kube.
+# Managed by apps/podman-add-server.sh — do not apply directly.
+#
+# Placeholders substituted by podman-add-server.sh via envsubst:
+#   ${ENV_NAME}    — unique environment name (e.g. staging, uat, prod)
+#   ${APP_DIR}     — absolute path to the app_mock directory for this environment
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-mock-${ENV_NAME}
+  labels:
+    app: elk-monitor
+    component: app-mock
+    environment: ${ENV_NAME}
+spec:
+  hostname: app-mock-${ENV_NAME}
+  containers:
+    - name: app-mock-${ENV_NAME}
+      image: localhost/app-mock:latest
+      volumeMounts:
+        - name: app-src
+          mountPath: /app
+        - name: app-logs
+          mountPath: /var/log/app_mock
+  volumes:
+    - name: app-src
+      hostPath:
+        path: ${APP_DIR}
+        type: Directory
+    - name: app-logs
+      hostPath:
+        path: ${APP_DIR}/logs
+        type: DirectoryOrCreate

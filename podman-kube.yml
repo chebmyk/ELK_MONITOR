@@ -1,0 +1,124 @@
+# ELK Monitor — Podman Play Kube manifests (cluster only)
+#
+# DO NOT apply directly. Use podman-run.sh which substitutes these placeholders:
+#   ${ELASTIC_PASSWORD}       — from .env
+#   ${KIBANA_SYSTEM_PASSWORD} — from .env
+#   ${LOGSTASH_PASSWORD}      — from .env
+#   ${PROJECT_DIR}            — absolute path to this repo, set by podman-run.sh
+#
+# App mock environments are managed separately by apps/podman-add-server.sh
+# using podman-kube-app-mock.yml.
+#
+# All pods join the 'elk-monitor' network.
+# Pod names are used for DNS resolution (elasticsearch, logstash, kibana).
+
+---
+# ─── Elasticsearch ───────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: elasticsearch
+  labels:
+    app: elk-monitor
+    component: elasticsearch
+spec:
+  containers:
+    - name: elasticsearch
+      image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+      env:
+        - name: discovery.type
+          value: single-node
+        - name: xpack.security.enabled
+          value: "true"
+        - name: ELASTIC_PASSWORD
+          value: "${ELASTIC_PASSWORD}"
+        - name: ES_JAVA_OPTS
+          value: "-Xms1g -Xmx1g"
+      ports:
+        - containerPort: 9200
+          hostPort: 9200
+          protocol: TCP
+      volumeMounts:
+        - name: es-data
+          mountPath: /usr/share/elasticsearch/data
+      readinessProbe:
+        exec:
+          command:
+            - sh
+            - -c
+            - "curl -sf -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health"
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 12
+  volumes:
+    - name: es-data
+      hostPath:
+        path: /Data/elasticsearch
+        type: DirectoryOrCreate
+
+---
+# ─── Logstash ────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: logstash
+  labels:
+    app: elk-monitor
+    component: logstash
+spec:
+  containers:
+    - name: logstash
+      image: docker.elastic.co/logstash/logstash:8.12.2
+      command: ["/bin/bash", "-c"]
+      args:
+        - "/usr/share/logstash/bin/logstash-plugin update logstash-input-beats && /usr/share/logstash/bin/logstash"
+      env:
+        - name: ELASTIC_USER
+          value: logstash_writer
+        - name: ELASTIC_PASSWORD
+          value: "${LOGSTASH_PASSWORD}"
+      ports:
+        - containerPort: 5050
+          hostPort: 5050
+          protocol: TCP
+      volumeMounts:
+        - name: pipeline-dir
+          mountPath: /usr/share/logstash/pipeline
+        - name: pipelines-yml
+          mountPath: /usr/share/logstash/config/pipelines.yml
+  volumes:
+    - name: pipeline-dir
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/pipeline
+        type: Directory
+    - name: pipelines-yml
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/pipelines.yml
+        type: File
+
+---
+# ─── Kibana ──────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kibana
+  labels:
+    app: elk-monitor
+    component: kibana
+spec:
+  containers:
+    - name: kibana
+      image: docker.elastic.co/kibana/kibana:8.12.2
+      env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch:9200"
+        - name: ELASTICSEARCH_USERNAME
+          value: kibana_system
+        - name: ELASTICSEARCH_PASSWORD
+          value: "${KIBANA_SYSTEM_PASSWORD}"
+      ports:
+        - containerPort: 5601
+          hostPort: 5601
+          protocol: TCP
+

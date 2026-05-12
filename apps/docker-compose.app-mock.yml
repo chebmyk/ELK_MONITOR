@@ -1,0 +1,31 @@
+# apps/docker-compose.app-mock.yml
+#
+# On-demand app_mock launcher. Managed by apps/run_app_server.sh — do not run directly.
+#
+# Required env vars (set by run_app_server.sh):
+#   ENV_NAME   — unique environment name, e.g. staging / prod / uat / test01
+#   APP_DIR    — absolute path to the app_mock directory for this environment
+#
+# Run via: docker compose -f apps/docker-compose.app-mock.yml ...
+# Build context is the apps/ directory, so Dockerfile is found at apps/Dockerfile.
+
+version: '3.8'
+
+services:
+  app_mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: app-mock:latest
+    container_name: app_mock_${ENV_NAME}
+    hostname: app_mock_${ENV_NAME}
+    volumes:
+      - ${APP_DIR}:/app
+      - ${APP_DIR}/logs:/var/log/app_mock
+    networks:
+      - elk-monitor
+    restart: unless-stopped
+
+networks:
+  elk-monitor:
+    external: true
