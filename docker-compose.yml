@@ -53,32 +53,6 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  app_mock_v1:
-    build:
-      context: .
-      dockerfile: apps/Dockerfile
-    container_name: app_mock_v1
-    volumes:
-      - ./apps/app_mock_v1:/app
-      - ./apps/app_mock_v1/logs:/var/log/app_mock
-    depends_on:
-      - logstash
-    networks:
-      - default
-
-  app_mock_v2:
-    build:
-      context: .
-      dockerfile: apps/Dockerfile
-    container_name: app_mock_v2
-    volumes:
-      - ./apps/app_mock_v2:/app
-      - ./apps/app_mock_v2/logs:/var/log/app_mock
-    depends_on:
-      - logstash
-    networks:
-      - default
-
   # kibana-setup:
   #   image: curlimages/curl:8.6.0
   #   container_name: kibana-setup
@@ -88,3 +62,9 @@ services:
   #   depends_on:
   #     - kibana
   #   restart: "no"
+
+# Give the default network a stable, predictable name so app_mock instances
+# can join it as an external network regardless of the project directory name.
+networks:
+  default:
+    name: elk-monitor
