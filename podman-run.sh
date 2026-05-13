@@ -28,6 +28,7 @@ command -v curl      &>/dev/null || die "curl is not installed"
 
 # ─── load .env ─────────────────────────────────────────────────────────────────
 [[ -f .env ]] || die ".env not found in $(pwd)"
+
 set -a; source .env; set +a
 
 : "${ELASTIC_PASSWORD:?must be set in .env}"
@@ -36,6 +37,9 @@ set -a; source .env; set +a
 
 export PROJECT_DIR
 PROJECT_DIR="$(realpath .)"
+
+# ES data directory — override in .env or environment: ES_DATA_DIR=/custom/path
+export ES_DATA_DIR="${ES_DATA_DIR:-/Data/elk/elasticsearch}"
 
 NETWORK="elk-monitor"
 ES_URL="http://localhost:9200"
@@ -49,12 +53,28 @@ case "$CMD" in
   up)
     # ── 1. Directories ──────────────────────────────────────────────────────────
     log "Creating required directories..."
-    sudo mkdir -p /Data/elasticsearch
+    mkdir -p "${ES_DATA_DIR}"
 
-    log "Fixing /Data/elasticsearch ownership for UID 1000 (rootless Podman)..."
-    podman unshare chown -R 1000:1000 /Data/elasticsearch
+    # ── 2. Fix Elasticsearch data dir permissions ──────────────────────────────
+    # ES container writes as UID 1000 (elasticsearch). Use podman unshare so
+    # the chown runs inside the rootless user namespace where UID 1000 is valid.
+    log "Fixing ${ES_DATA_DIR} ownership for Elasticsearch (UID 1000)..."
+    podman unshare chown -R 1000:1000 "${ES_DATA_DIR}"
+    if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
+      log "SELinux is enforcing — relabeling ${ES_DATA_DIR} with container_file_t..."
+      chcon -Rt container_file_t "${ES_DATA_DIR}"
+    fi
 
-    # ── 2. Podman network ───────────────────────────────────────────────────────
+    # ── 3. Fix logstash config file permissions ──────────────────────────────
+    # Logstash only needs read access; o+rX is sufficient.
+    log "Setting permissions on logstash config files..."
+    chmod -R o+rX logstash/
+    if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
+      log "SELinux is enforcing — relabeling logstash/ with container_file_t..."
+      chcon -Rt container_file_t logstash/
+    fi
+
+    # ── 4. Podman network ───────────────────────────────────────────────────────
     if ! podman network exists "$NETWORK"; then
       log "Creating Podman network '${NETWORK}'..."
       podman network create "$NETWORK"
@@ -65,14 +85,14 @@ case "$CMD" in
     log "Launching cluster pods via podman play kube..."
     envsubst < podman-kube.yml | podman play kube --network "$NETWORK" -
 
-    # ── 3. Wait for Elasticsearch ───────────────────────────────────────────────
+    # ── 5. Wait for Elasticsearch ───────────────────────────────────────────────
     log "Waiting for Elasticsearch to be healthy..."
     until curl -sf -u "$ES_AUTH" "${ES_URL}/_cluster/health" &>/dev/null; do
       printf '.'; sleep 3
     done
     echo " ready"
 
-    # ── 4. Bootstrap ES security (idempotent) ───────────────────────────────────
+    # ── 6. Bootstrap ES security (idempotent) ───────────────────────────────────
     log "Setting kibana_system password..."
     curl -sf -X POST -u "$ES_AUTH" \
       -H "Content-Type: application/json" \

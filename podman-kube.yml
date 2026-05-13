@@ -22,6 +22,12 @@ metadata:
     app: elk-monitor
     component: elasticsearch
 spec:
+  # seLinuxOptions: lets the ES container write to the host-mounted data dir
+  # on SELinux enforcing systems (RHEL). svirt_sandbox_file_t is the standard
+  # confined container label — less privileged than spc_t.
+  securityContext:
+    seLinuxOptions:
+      type: svirt_sandbox_file_t
   containers:
     - name: elasticsearch
       image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
@@ -41,20 +47,10 @@ spec:
       volumeMounts:
         - name: es-data
           mountPath: /usr/share/elasticsearch/data
-      readinessProbe:
-        exec:
-          command:
-            - sh
-            - -c
-            - "curl -sf -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health"
-        initialDelaySeconds: 30
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 12
   volumes:
     - name: es-data
       hostPath:
-        path: /Data/elasticsearch
+        path: ${ES_DATA_DIR}
         type: DirectoryOrCreate
 
 ---
@@ -67,6 +63,12 @@ metadata:
     app: elk-monitor
     component: logstash
 spec:
+  # seLinuxOptions: lets the container read host-mounted files on SELinux enforcing
+  # systems. svirt_sandbox_file_t is the standard container read label — less
+  # privileged than spc_t (which bypasses all SELinux checks).
+  securityContext:
+    seLinuxOptions:
+      type: svirt_sandbox_file_t
   containers:
     - name: logstash
       image: docker.elastic.co/logstash/logstash:8.12.2
@@ -121,4 +123,3 @@ spec:
         - containerPort: 5601
           hostPort: 5601
           protocol: TCP
-
