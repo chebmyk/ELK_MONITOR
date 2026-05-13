@@ -89,6 +89,8 @@ spec:
           mountPath: /usr/share/logstash/pipeline
         - name: pipelines-yml
           mountPath: /usr/share/logstash/config/pipelines.yml
+        - name: logstash-yml
+          mountPath: /usr/share/logstash/config/logstash.yml
   volumes:
     - name: pipeline-dir
       hostPath:
@@ -97,6 +99,10 @@ spec:
     - name: pipelines-yml
       hostPath:
         path: ${PROJECT_DIR}/logstash/pipelines.yml
+        type: File
+    - name: logstash-yml
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/logstash.yml
         type: File
 
 ---

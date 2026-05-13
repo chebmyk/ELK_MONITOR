@@ -32,8 +32,9 @@ services:
       - ELASTIC_USER=logstash_writer
       - ELASTIC_PASSWORD=${LOGSTASH_PASSWORD}
     volumes:
-      - ./logstash/pipeline:/usr/share/logstash/pipeline
-      - ./logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+      - ../../logstash/pipeline:/usr/share/logstash/pipeline
+      - ../../logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+      - ../../logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
     ports:
       - "5050:5050"
     depends_on:
@@ -57,7 +58,7 @@ services:
   #   image: curlimages/curl:8.6.0
   #   container_name: kibana-setup
   #   volumes:
-  #     - ./kibana:/kibana
+  #     - ../../kibana:/kibana
   #   entrypoint: ["/bin/sh", "/kibana/setup.sh"]
   #   depends_on:
   #     - kibana

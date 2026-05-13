@@ -4,18 +4,28 @@ ELK-based environment monitoring stack with mock applications, Filebeat sidecars
 
 ## Starting the Stack
 
+**Docker:**
 ```bash
-./monitor.sh            # start all services
-./monitor.sh down       # stop and remove containers
-./monitor.sh restart logstash   # restart a single service
-./monitor.sh logs kibana        # tail service logs
-./monitor.sh status             # container status
+./deployment/docker/monitor.sh            # start all services
+./deployment/docker/monitor.sh down       # stop and remove containers
+./deployment/docker/monitor.sh restart logstash   # restart a single service
+./deployment/docker/monitor.sh logs kibana        # tail service logs
+./deployment/docker/monitor.sh status             # container status
+```
+
+**Podman / RHEL:**
+```bash
+./deployment/podman/podman-run.sh            # start all services
+./deployment/podman/podman-run.sh down       # stop and remove pods
+./deployment/podman/podman-run.sh status     # pod status
+./deployment/podman/podman-run.sh logs kibana
 ```
 
 **Kibana Data Views** (run once after `kibana` is healthy — not auto-provisioned):
 ```bash
-docker compose run --rm kibana-setup
-# or manually: uncomment the kibana-setup service in docker-compose.yml, then docker compose up kibana-setup
+docker compose -f deployment/docker/docker-compose.yml run --rm kibana-setup
+# or manually: uncomment the kibana-setup service in deployment/docker/docker-compose.yml, then
+# docker compose -f deployment/docker/docker-compose.yml up kibana-setup
 ```
 
 ## Required: `.env` File
@@ -28,7 +38,7 @@ KIBANA_SYSTEM_PASSWORD=<your-password>
 LOGSTASH_PASSWORD=<your-password>
 ```
 
-`monitor.sh up` bootstraps the `kibana_system` password and creates the `logstash_writer` role automatically on first run.
+`deployment/docker/monitor.sh up` bootstraps the `kibana_system` password and creates the `logstash_writer` role automatically on first run.
 
 ## Service Endpoints
 
@@ -72,7 +82,7 @@ This index uses ES `update` with `doc_as_upsert`. The `config.app` and `config.d
 - **ES data directory** — `/Data/elasticsearch` must exist on the host. On Linux, it must be owned by UID 1000 (`chown -R 1000:1000 /Data/elasticsearch`). `monitor.sh` does this automatically on Linux.
 - **Slow Logstash cold start** — Logstash updates the `logstash-input-beats` plugin at every startup. This adds ~60 seconds to the first `docker compose up`.
 - **XML multiline in Filebeat** — XML configs are collected as one event using multiline anchored on `<?xml`. If an XML file does not start with `<?xml`, the event will not be collected correctly.
-- **Kibana Data Views not auto-created** — The `kibana-setup` service in `docker-compose.yml` is commented out. Run [`kibana/setup.sh`](kibana/setup.sh) manually against a running Kibana.
+- **Kibana Data Views not auto-created** — The `kibana-setup` service in `deployment/docker/docker-compose.yml` is commented out. Run [`kibana/setup.sh`](kibana/setup.sh) manually against a running Kibana.
 
 ## Project Structure
 
@@ -80,8 +90,22 @@ This index uses ES `update` with `doc_as_upsert`. The `config.app` and `config.d
 apps/
   Dockerfile              — shared image for all app_mock_* containers; installs Python + Filebeat sidecar
   filebeat.yml            — shared Filebeat config mounted into both containers
+  deployment/
+    docker/
+      docker-compose.app-mock.yml  — Compose template for on-demand app_mock containers
+      run_app_server.sh       — CLI for managing Docker app_mock environments
+    podman/
+      podman-kube-app-mock.yml     — Kube manifest template for app_mock pods
+      podman-add-server.sh    — CLI for managing Podman app_mock environments
   app_mock_v1/            — staging environment mock (app.py + XML configs)
   app_mock_v2/            — production environment mock (app.py + XML configs)
+deployment/
+  docker/
+    docker-compose.yml    — ELK cluster stack (Elasticsearch, Logstash, Kibana)
+    monitor.sh            — CLI wrapper for the Docker ELK cluster
+  podman/
+    podman-kube.yml       — Kube manifest for the ELK cluster
+    podman-run.sh         — CLI wrapper for the Podman ELK cluster
 logstash/
   pipelines.yml           — declares app_pipeline and logs_pipeline
   pipeline/app.conf       — main routing pipeline

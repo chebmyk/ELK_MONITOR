@@ -2,6 +2,12 @@
 # podman-run.sh — manage the ELK Monitor stack via podman play kube
 set -euo pipefail
 
+# ─── locate project root ─────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"  # deployment/podman/ → deployment/ → root
+KUBE_MANIFEST="${SCRIPT_DIR}/podman-kube.yml"
+cd "$PROJECT_DIR"
+
 # ─── helpers ──────────────────────────────────────────────────────────────────
 log() { echo "[$(date '+%H:%M:%S')] ==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -16,7 +22,7 @@ Commands:
   status   Show cluster pod status
   logs     Tail logs: $0 logs [elasticsearch|logstash|kibana]
 
-App mock environments are managed separately by apps/podman-add-server.sh.
+  App mock environments are managed separately by deployment/podman/podman-add-server.sh.
 EOF
   exit 1
 }
@@ -36,11 +42,7 @@ set -a; source .env; set +a
 : "${LOGSTASH_PASSWORD:?must be set in .env}"
 
 export PROJECT_DIR
-PROJECT_DIR="$(realpath .)"
-
-# ES data directory — override in .env or environment: ES_DATA_DIR=/custom/path
 export ES_DATA_DIR="${ES_DATA_DIR:-/Data/elk/elasticsearch}"
-
 NETWORK="elk-monitor"
 ES_URL="http://localhost:9200"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
@@ -83,7 +85,7 @@ case "$CMD" in
     fi
 
     log "Launching cluster pods via podman play kube..."
-    envsubst < podman-kube.yml | podman play kube --network "$NETWORK" -
+    envsubst < "$KUBE_MANIFEST" | podman play kube --network "$NETWORK" -
 
     # ── 5. Wait for Elasticsearch ───────────────────────────────────────────────
     log "Waiting for Elasticsearch to be healthy..."
@@ -123,13 +125,13 @@ case "$CMD" in
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
     echo "  Kibana        : http://localhost:5601  (user: elastic)"
     echo "  Logstash beats: localhost:5050"
-    echo "  App mocks      : ./apps/podman-add-server.sh start <env_name>"
+    echo "  App mocks      : ./deployment/podman/podman-add-server.sh start <env_name>"
     echo "────────────────────────────────────────"
     ;;
 
   down)
     log "Stopping and removing cluster pods..."
-    envsubst < podman-kube.yml | podman play kube --down -
+    envsubst < "$KUBE_MANIFEST" | podman play kube --down -
     ;;
 
   status)

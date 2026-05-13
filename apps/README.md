@@ -2,7 +2,7 @@
 
 Mock application servers that simulate monitored environments. Each instance runs as an independent container and ships logs and config files into the ELK cluster via a Filebeat sidecar.
 
-> **Prerequisite:** The ELK cluster must be running first (`./monitor.sh` from the project root).
+> **Prerequisite:** The ELK cluster must be running first (`deployment/docker/monitor.sh` or `deployment/podman/podman-run.sh` from the project root).
 
 ---
 
@@ -12,10 +12,13 @@ Mock application servers that simulate monitored environments. Each instance run
 apps/
 ├── Dockerfile                   # Shared image: Python 3.11 + Filebeat sidecar
 ├── filebeat.yml                 # Shared Filebeat config (mounted into every container)
-├── docker-compose.app-mock.yml  # Compose template for Docker-based environments
-├── podman-kube-app-mock.yml     # Kube manifest template for Podman-based environments
-├── run_app_server.sh            # CLI for Docker environments
-├── podman-add-server.sh         # CLI for Podman / RHEL environments
+├── deployment/
+│   ├── docker/
+│   │   ├── docker-compose.app-mock.yml  # Compose template for Docker-based environments
+│   │   └── run_app_server.sh            # CLI for Docker environments
+│   └── podman/
+│       ├── podman-kube-app-mock.yml     # Kube manifest template for Podman-based environments
+│       └── podman-add-server.sh         # CLI for Podman / RHEL environments
 ├── app_mock_v1/                 # Built-in environment: staging
 │   ├── app.py
 │   └── config/
@@ -26,6 +29,14 @@ apps/
 │       └── db/datasource.xml
 └── app_mock_v2/                 # Built-in environment: production
     └── ...
+
+deployment/
+├── docker/
+│   ├── docker-compose.yml           # ELK cluster (Elasticsearch, Logstash, Kibana)
+│   └── monitor.sh                   # CLI for the Docker ELK cluster
+└── podman/
+    ├── podman-kube.yml              # Kube manifest for the ELK cluster
+    └── podman-run.sh                # CLI for the Podman ELK cluster
 ```
 
 When you start a new named environment (e.g. `uat`), the script scaffolds `apps/app_mock_uat/` automatically from the `app_mock_v1` template.
@@ -39,14 +50,14 @@ Run from **anywhere** in the project. The script locates the project root automa
 ### Start an environment
 
 ```bash
-./apps/run_app_server.sh start <env_name>
+./apps/deployment/docker/run_app_server.sh start <env_name>
 ```
 
 Examples:
 ```bash
-./apps/run_app_server.sh start staging
-./apps/run_app_server.sh start uat
-./apps/run_app_server.sh start prod
+./apps/deployment/docker/run_app_server.sh start staging
+./apps/deployment/docker/run_app_server.sh start uat
+./apps/deployment/docker/run_app_server.sh start prod
 ```
 
 On first run for a new `env_name`, the script:
@@ -58,13 +69,13 @@ On first run for a new `env_name`, the script:
 ### Stop an environment
 
 ```bash
-./apps/run_app_server.sh stop <env_name>
+./apps/deployment/docker/run_app_server.sh stop <env_name>
 ```
 
 ### List environments
 
 ```bash
-./apps/run_app_server.sh list
+./apps/deployment/docker/run_app_server.sh list
 ```
 
 Output shows both **running containers** and **available config directories**.
@@ -72,7 +83,7 @@ Output shows both **running containers** and **available config directories**.
 ### Tail logs
 
 ```bash
-./apps/run_app_server.sh logs <env_name>
+./apps/deployment/docker/run_app_server.sh logs <env_name>
 ```
 
 ### Rebuild the image
@@ -80,7 +91,7 @@ Output shows both **running containers** and **available config directories**.
 Required after any change to `Dockerfile`, `filebeat.yml`, or `app.py`:
 
 ```bash
-./apps/run_app_server.sh build
+./apps/deployment/docker/run_app_server.sh build
 ```
 
 ---
@@ -98,11 +109,11 @@ sudo dnf install -y gettext   # provides envsubst
 ### Commands
 
 ```bash
-./apps/podman-add-server.sh start <env_name>
-./apps/podman-add-server.sh stop  <env_name>
-./apps/podman-add-server.sh list
-./apps/podman-add-server.sh logs  <env_name>
-./apps/podman-add-server.sh build
+./apps/deployment/podman/podman-add-server.sh start <env_name>
+./apps/deployment/podman/podman-add-server.sh stop  <env_name>
+./apps/deployment/podman/podman-add-server.sh list
+./apps/deployment/podman/podman-add-server.sh logs  <env_name>
+./apps/deployment/podman/podman-add-server.sh build
 ```
 
 ---

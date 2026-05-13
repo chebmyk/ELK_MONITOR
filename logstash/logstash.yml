@@ -1,0 +1,12 @@
+# logstash.yml — Logstash node settings
+#
+# The license checker and monitoring subsystem connect to Elasticsearch
+# independently of the pipeline outputs. Without credentials here they
+# hit ES as an anonymous user and receive 401.
+#
+# ELASTIC_USER and ELASTIC_PASSWORD are injected by docker-compose / podman
+# via the container environment (see deployment configs).
+
+xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+xpack.monitoring.elasticsearch.username: "${ELASTIC_USER}"
+xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# start.sh — wrapper to manage the ELK Monitor stack with security enabled
+# monitor.sh — wrapper to manage the ELK Monitor stack with security enabled
 set -euo pipefail
+
+# ─── locate project root ─────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"  # deployment/docker/ → deployment/ → root
+COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+cd "$PROJECT_DIR"
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 log()  { echo "[$(date '+%H:%M:%S')] ==> $*"; }
@@ -50,7 +56,7 @@ case "$CMD" in
 
     # ── Step 1: Elasticsearch ──────────────────────────────────────────────────
     log "Starting Elasticsearch..."
-    docker compose up -d elasticsearch
+    docker compose -f "$COMPOSE_FILE" up -d elasticsearch
 
     log "Waiting for Elasticsearch to be healthy..."
     until curl -sf -u "$ES_AUTH" "${ES_URL}/_cluster/health" &>/dev/null; do
@@ -92,7 +98,7 @@ case "$CMD" in
 
     # ── Step 3: Start everything else ─────────────────────────────────────────
     log "Starting remaining services..."
-    docker compose up -d
+    docker compose -f "$COMPOSE_FILE" up -d
 
     echo ""
     echo "────────────────────────────────────────"
@@ -105,29 +111,29 @@ case "$CMD" in
 
   down)
     log "Stopping stack..."
-    docker compose down
+    docker compose -f "$COMPOSE_FILE" down
     ;;
 
   restart)
     if [[ -n "$SERVICE" ]]; then
       log "Restarting ${SERVICE}..."
-      docker compose restart "$SERVICE"
+      docker compose -f "$COMPOSE_FILE" restart "$SERVICE"
     else
       log "Restarting all services..."
-      docker compose restart
+      docker compose -f "$COMPOSE_FILE" restart
     fi
     ;;
 
   logs)
     if [[ -n "$SERVICE" ]]; then
-      docker compose logs -f "$SERVICE"
+      docker compose -f "$COMPOSE_FILE" logs -f "$SERVICE"
     else
-      docker compose logs -f
+      docker compose -f "$COMPOSE_FILE" logs -f
     fi
     ;;
 
   status)
-    docker compose ps
+    docker compose -f "$COMPOSE_FILE" ps
     ;;
 
   *)
