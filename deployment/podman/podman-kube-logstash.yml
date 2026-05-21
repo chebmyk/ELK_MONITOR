@@ -1,0 +1,88 @@
+# ELK Monitor — Logstash pod
+#
+# DO NOT apply directly. Use run_monitor.sh which substitutes these placeholders:
+#   ${LOGSTASH_PASSWORD}  — from .env
+#   ${PROJECT_DIR}        — absolute path to this repo, set by run_monitor.sh
+#   ${ELK_VERSION}        — ELK stack version, e.g. 9.4.1  (from .env)
+#   ${ELASTIC_HOST}       — Elasticsearch hostname (from .env, default elasticsearch-pod)
+#   ${ELASTIC_PORT}        — Elasticsearch HTTP port         (from .env, default 9200)
+#   ${LOGSTASH_PORT}       — Logstash Beats input port       (from .env, default 5050)
+#
+# Pod is named 'logstash-pod' so that app_mock containers and other pods on the
+# elk-monitor network can ship Beats events to logstash-pod:${LOGSTASH_PORT}.
+# Set LOGSTASH_HOST=logstash-pod in .env to match.
+#
+# Scale-out: to run multiple Logstash nodes, add more containers here and front
+# them with a load-balancer pod, or switch to a Logstash cluster topology. All
+# nodes share the same host-mounted config (pipeline-dir, pipelines-yml, logstash-yml).
+#
+# run_monitor.sh starts this pod after ES is healthy and logstash_writer is
+# provisioned, so no in-container wait loop is needed.
+#
+# Podman container name: logstash-pod-logstash
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: logstash-pod
+  labels:
+    app: elk-monitor
+    component: logstash
+spec:
+  securityContext:
+    seLinuxOptions:
+      type: svirt_sandbox_file_t
+
+  containers:
+    - name: logstash
+      image: docker.elastic.co/logstash/logstash:${ELK_VERSION}
+      # No wait loop needed: run_monitor.sh guarantees ES is healthy and
+      # logstash_writer is provisioned before this pod is started.
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          /usr/share/logstash/bin/logstash-plugin update logstash-input-beats && \
+          /usr/share/logstash/bin/logstash
+      env:
+        - name: ELASTIC_USER
+          value: logstash_writer
+        - name: ELASTIC_PASSWORD
+          value: "${LOGSTASH_PASSWORD}"
+        - name: ELASTIC_HOST
+          value: "${ELASTIC_HOST}"
+        - name: ELASTIC_PORT
+          value: "${ELASTIC_PORT}"
+      ports:
+        - containerPort: ${LOGSTASH_PORT}
+          hostPort: ${LOGSTASH_PORT}
+          protocol: TCP
+      volumeMounts:
+        - name: pipeline-dir
+          mountPath: /usr/share/logstash/pipeline
+        - name: pipelines-yml
+          mountPath: /usr/share/logstash/config/pipelines.yml
+        - name: logstash-yml
+          mountPath: /usr/share/logstash/config/logstash.yml
+        # Shared with filebeat-elk-infra: Filebeat reads Logstash logs from this volume
+        #- name: logstash-logs
+        #  mountPath: /usr/share/logstash/logs
+
+  volumes:
+    - name: pipeline-dir
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/pipeline
+        type: Directory
+    - name: pipelines-yml
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/pipelines.yml
+        type: File
+    - name: logstash-yml
+      hostPath:
+        path: ${PROJECT_DIR}/logstash/logstash.yml
+        type: File
+
+    # - name: logstash-logs
+    #   hostPath:
+    #     path: ${PROJECT_DIR}/data/elk-logs/logstash
+    #     type: DirectoryOrCreate

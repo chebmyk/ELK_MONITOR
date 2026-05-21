@@ -35,7 +35,7 @@ set -a; source .env; set +a
 : "${KIBANA_SYSTEM_PASSWORD:?must be set in .env}"
 : "${LOGSTASH_PASSWORD:?must be set in .env}"
 
-ES_URL="http://localhost:9200"
+ES_URL="http://${ELASTIC_HOST}:${ELASTIC_PORT}"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
 
 # ─── subcommands ──────────────────────────────────────────────────────────────
@@ -46,13 +46,13 @@ case "$CMD" in
 
   up)
     # Prepare bind-mount directory
-    mkdir -p /Data/elasticsearch
+    mkdir -p "${ES_DATA_DIR}"
 
-    # On Linux the ES container runs as UID 1000; fix ownership so it can write
-    if [[ "$(uname -s)" == "Linux" ]]; then
-      log "Setting /Data/elasticsearch ownership to UID 1000 (elasticsearch)..."
-      chown -R 1000:1000 /Data/elasticsearch
-    fi
+    # # On Linux the ES container runs as UID 1000; fix ownership so it can write
+    # if [[ "$(uname -s)" == "Linux" ]]; then
+    #   log "Setting ${ES_DATA_DIR} ownership to UID 1000 (elasticsearch)..."
+    #   chown -R 1000:1000 "${ES_DATA_DIR}"
+    # fi
 
     # ── Step 1: Elasticsearch ──────────────────────────────────────────────────
     log "Starting Elasticsearch..."
@@ -104,8 +104,8 @@ case "$CMD" in
     echo "────────────────────────────────────────"
     echo "  Stack is up"
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
-    echo "  Kibana        : http://localhost:5601  (user: elastic)"
-    echo "  Logstash beats: localhost:5050"
+    echo "  Kibana        : http://localhost:${KIBANA_PORT}  (user: elastic)"
+    echo "  Logstash beats: localhost:${LOGSTASH_PORT}"
     echo "────────────────────────────────────────"
     ;;
 

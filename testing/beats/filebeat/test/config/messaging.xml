@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<messaging>
+    <broker>rabbitmq-prod.internal</broker>
+    <port>5671</port>
+    <virtual_host>/production</virtual_host>
+    <username>app_mock_v2</username>
+    <queues>
+        <queue name="orders" durable="true"/>
+        <queue name="notifications" durable="true"/>
+        <queue name="reports" durable="true"/>
+        <queue name="deadletter" durable="true"/>
+    </queues>
+    <prefetch_count>25</prefetch_count>
+</messaging>

@@ -18,10 +18,40 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 cd "$PROJECT_DIR"
 
-KUBE_TEMPLATE="${SCRIPT_DIR}/podman-kube-app-mock.yml"
 APPS_DIR="${PROJECT_DIR}/apps"
 STATE_FILE="${APPS_DIR}/.env_configs"   # persists env_name → config_name mappings
 NETWORK="elk-monitor"
+
+# ── Load .env — all defaults are defined there ───────────────────────────────
+[[ -f "${PROJECT_DIR}/.env" ]] || die ".env not found in ${PROJECT_DIR}"
+set -a; source "${PROJECT_DIR}/.env"; set +a
+
+export LOGSTASH_HOST
+export LOGSTASH_PORT
+
+# ── Parse flags (--agent, --all) before positional arguments ─────────────────
+USE_AGENT=false
+BUILD_ALL=false
+_PARSED_ARGS=()
+for _arg in "$@"; do
+  case "$_arg" in
+    --agent) USE_AGENT=true ;;
+    --all)   BUILD_ALL=true ;;
+    *)       _PARSED_ARGS+=("$_arg") ;;
+  esac
+done
+set -- "${_PARSED_ARGS[@]+"${_PARSED_ARGS[@]}"}"
+
+# ── Select tool variant (Filebeat default / Elastic Agent with --agent) ───────
+if [[ "$USE_AGENT" == "true" ]]; then
+  KUBE_TEMPLATE="${SCRIPT_DIR}/podman-kube-app-mock-agent.yml"
+  IMAGE_TAG="localhost/app-mock-agent:latest"
+  DOCKERFILE="apps/deployment/Dockerfile.elastic-agent"
+else
+  KUBE_TEMPLATE="${SCRIPT_DIR}/podman-kube-app-mock.yml"
+  IMAGE_TAG="localhost/app-mock:latest"
+  DOCKERFILE="apps/deployment/Dockerfile"
+fi
 
 log() { echo "[$(date '+%H:%M:%S')] ==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -31,14 +61,18 @@ command -v envsubst &>/dev/null || die "envsubst not found — install gettext: 
 
 usage() {
   cat <<EOF
-Usage: $0 <command> [env_name] [config_name]
+Usage: $0 <command> [env_name] [config_name] [--agent]
+
+Flags:
+  --agent   Use Elastic Agent sidecar instead of Filebeat (default: Filebeat)
+  --all     (build only) Build both the Filebeat and Elastic Agent images
 
 Commands:
-  start  <env_name> [config]  Start a mock pod; prompts for config if omitted
-  stop   <env_name>           Stop and remove the mock pod
-  list                        List running pods and available configs
-  logs   <env_name>           Tail container logs for a running mock pod
-  build                       Build (or rebuild) the shared localhost/app-mock:latest image
+  start  <env_name> [config] [--agent]  Start a mock pod; prompts for config if omitted
+  stop   <env_name>                     Stop and remove the mock pod (auto-detects variant)
+  list                                  List running pods and available configs
+  logs   <env_name>                     Tail container logs for a running mock pod
+  build  [--agent] [--all]              Build mock image(s)
 
 Available configs:
 $(for d in "${APPS_DIR}"/app_config_*/; do [[ -d "$d" ]] && echo "  $(basename "$d")"; done 2>/dev/null || echo "  (none found)")
@@ -46,8 +80,10 @@ $(for d in "${APPS_DIR}"/app_config_*/; do [[ -d "$d" ]] && echo "  $(basename "
 Examples:
   $0 start staging
   $0 start staging app_config_v1
+  $0 start staging app_config_v1 --agent
   $0 stop  staging
   $0 list
+  $0 build --all
 EOF
   exit 1
 }
@@ -102,11 +138,23 @@ remove_mapping() {
   mv "${STATE_FILE}.tmp" "$STATE_FILE"
 }
 
-# ── Ensure the app-mock image is built ────────────────────────────────────────
+# ── Ensure the correct mock image is built ───────────────────────────────────
 ensure_image() {
-  if ! podman image exists localhost/app-mock:latest; then
-    log "localhost/app-mock:latest not found — building..."
-    podman build -t localhost/app-mock:latest -f apps/deployment/Dockerfile apps/
+  if ! podman image exists "${IMAGE_TAG}"; then
+    log "${IMAGE_TAG} not found — building..."
+    podman build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" apps/
+  fi
+}
+
+# ── Detect which kube template was used for a running pod ────────────────────
+detect_kube_template() {
+  local env_name="$1"
+  local img
+  img=$(podman inspect "app-mock-${env_name}-app-mock-${env_name}" --format '{{.Image}}' 2>/dev/null || true)
+  if [[ "$img" == *"agent"* ]]; then
+    echo "${SCRIPT_DIR}/podman-kube-app-mock-agent.yml"
+  else
+    echo "${SCRIPT_DIR}/podman-kube-app-mock.yml"
   fi
 }
 
@@ -156,7 +204,7 @@ case "$CMD" in
     export ENV_NAME APP_DIR
 
     log "Stopping pod app-mock-${ENV_NAME}..."
-    envsubst < "$KUBE_TEMPLATE" | podman play kube --down -
+    envsubst < "$(detect_kube_template "${ENV_NAME}")" | podman play kube --down -
     remove_mapping "$ENV_NAME"
     log "Done"
     ;;
@@ -187,8 +235,15 @@ case "$CMD" in
     ;;
 
   build)
-    log "Building localhost/app-mock:latest..."
-    podman build -t localhost/app-mock:latest -f apps/deployment/Dockerfile apps/
+    if [[ "$BUILD_ALL" == "true" ]]; then
+      log "Building localhost/app-mock:latest (Filebeat)..."
+      podman build -t localhost/app-mock:latest -f apps/deployment/Dockerfile apps/
+      log "Building localhost/app-mock-agent:latest (Elastic Agent)..."
+      podman build -t localhost/app-mock-agent:latest -f apps/deployment/Dockerfile.elastic-agent apps/
+    else
+      log "Building ${IMAGE_TAG}..."
+      podman build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" apps/
+    fi
     log "Build complete"
     ;;
 

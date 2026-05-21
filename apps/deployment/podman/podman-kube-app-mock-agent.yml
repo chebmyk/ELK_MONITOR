@@ -1,7 +1,7 @@
-# apps/deployment/podman/podman-kube-app-mock.yml
+# apps/deployment/podman/podman-kube-app-mock-agent.yml
 #
-# On-demand app_mock pod manifest for podman play kube.
-# Managed by apps/deployment/podman/run_app_server.sh — do not apply directly.
+# On-demand app_mock pod manifest — Elastic Agent variant.
+# Managed by apps/deployment/podman/run_app_server.sh --agent — do not apply directly.
 #
 # app_server.py is baked into the image; only the selected app_config_*
 # directory is mounted as /app at runtime.
@@ -24,7 +24,7 @@ spec:
   hostname: app-mock-${ENV_NAME}
   containers:
     - name: app-mock-${ENV_NAME}
-      image: localhost/app-mock:latest
+      image: localhost/app-mock-agent:latest
       env:
         - name: LOGSTASH_HOST
           value: "${LOGSTASH_HOST}"

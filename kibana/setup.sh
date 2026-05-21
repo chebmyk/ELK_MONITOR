@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-KIBANA_URL="http://kibana:5601"
+KIBANA_URL="http://${KIBANA_HOST}:${KIBANA_PORT}"
 
 echo "Waiting for Kibana to be available..."
 until curl -sf "$KIBANA_URL/api/status" | grep -q '"level":"available"'; do
@@ -33,5 +33,8 @@ create_data_view "app-configs-history"
 
 # logs-app-*: daily rolling application logs
 create_data_view "app-logs-*"
+
+# elk-logs-*: daily rolling ELK internal logs (elastic, logstash, kibana)
+create_data_view "elk-logs-*"
 
 echo "All data views created. Open Kibana at $KIBANA_URL"

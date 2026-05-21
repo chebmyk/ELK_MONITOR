@@ -1,0 +1,83 @@
+# ELK Monitor — Elasticsearch pod
+#
+# DO NOT apply directly. Use run_monitor.sh which substitutes these placeholders:
+#   ${ELASTIC_PASSWORD}  — from .env
+#   ${ELK_VERSION}       — ELK stack version, e.g. 9.4.1  (from .env)
+#   ${ES_DATA_DIR}       — Elasticsearch data directory    (from .env, default /Data/elastic/elasticsearch)
+#   ${ELASTIC_PORT}      — Elasticsearch HTTP port         (from .env, default 9200)
+#
+# Pod is named 'elasticsearch' so that other pods on the elk-monitor network
+# can reach it at elasticsearch:${ELASTIC_PORT} without changing any config.
+# Podman registers the pod name as a DNS entry on the shared network.
+#
+# run_monitor.sh starts this pod first, waits for the livenessProbe to report
+# 'healthy', then bootstraps security, then starts podman-kube.yml (apps pod).
+# This eliminates the need for bash wait loops inside the Logstash/Kibana containers.
+#
+# Podman container name: elasticsearch-elasticsearch
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: elasticsearch-pod
+  labels:
+    app: elk-monitor
+    component: elasticsearch
+spec:
+  securityContext:
+    seLinuxOptions:
+      type: svirt_sandbox_file_t
+
+  containers:
+    - name: elasticsearch
+      image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
+      env:
+        - name: discovery.type
+          value: single-node
+        - name: xpack.security.enabled
+          value: "true"
+        - name: ELASTIC_PASSWORD
+          value: "${ELASTIC_PASSWORD}"
+        - name: ES_JAVA_OPTS
+          value: "-Xms1g -Xmx1g"
+      ports:
+        - containerPort: ${ELASTIC_PORT}
+          hostPort: ${ELASTIC_PORT}
+
+      # livenessProbe → Podman tracks health state (starting → healthy/unhealthy).
+      # run_monitor.sh polls 'podman inspect' until status = 'healthy', then bootstraps
+      # security before starting the apps pod. The probe authenticates as the elastic
+      # superuser (whose password is always set) and waits for cluster yellow/green.
+      livenessProbe:
+        exec:
+          command:
+            - bash
+            - -c
+            - >-
+              curl -sf
+              -u "elastic:${ELASTIC_PASSWORD}"
+              "http://localhost:${ELASTIC_PORT}/_cluster/health?wait_for_status=yellow&timeout=3s"
+              >/dev/null
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+
+      volumeMounts:
+        - name: es-data
+          mountPath: /usr/share/elasticsearch/data
+        # Shared with filebeat-elk-infra: Filebeat reads ES logs from this volume
+        # - name: es-logs
+        #   mountPath: /usr/share/elasticsearch/logs
+
+  volumes:
+    - name: es-data
+      hostPath:
+        path: ${ES_DATA_DIR}
+        type: DirectoryOrCreate
+
+    # - name: es-logs
+    #   hostPath:
+    #     path: ${PROJECT_DIR}/data/elk-logs/elasticsearch
+    #     type: DirectoryOrCreate

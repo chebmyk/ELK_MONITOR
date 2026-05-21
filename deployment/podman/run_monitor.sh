@@ -5,7 +5,9 @@ set -euo pipefail
 # ─── locate project root ─────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"  # deployment/podman/ → deployment/ → root
-KUBE_MANIFEST="${SCRIPT_DIR}/podman-kube.yml"
+ES_KUBE_MANIFEST="${SCRIPT_DIR}/podman-kube-es.yml"
+LOGSTASH_KUBE_MANIFEST="${SCRIPT_DIR}/podman-kube-logstash.yml"
+KUBE_MANIFEST="${SCRIPT_DIR}/podman-kube-kibana.yml"
 cd "$PROJECT_DIR"
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
@@ -17,12 +19,12 @@ usage() {
 Usage: $0 [command] [service]
 
 Commands:
-  up       Create cluster pods and bootstrap ES security (default)
-  down     Stop and remove cluster pods (elasticsearch, logstash, kibana)
-  status   Show cluster pod status
-  logs     Tail logs: $0 logs [elasticsearch|logstash|kibana]
+  up       Start Elasticsearch, wait for healthy, bootstrap security, start Logstash+Kibana (default)
+  down     Stop and remove all pods
+  status   Show pod status
+  logs     Tail logs: $0 logs [elasticsearch|logstash|kibana|filebeat-elk-infra]
 
-  App mock environments are managed separately by deployment/podman/podman-add-server.sh.
+  App mock environments are managed separately by apps/deployment/podman/run_app_server.sh.
 EOF
   exit 1
 }
@@ -42,9 +44,12 @@ set -a; source .env; set +a
 : "${LOGSTASH_PASSWORD:?must be set in .env}"
 
 export PROJECT_DIR
-export ES_DATA_DIR="${ES_DATA_DIR:-/Data/elk/elasticsearch}"
+
 NETWORK="elk-monitor"
-ES_URL="http://localhost:9200"
+# run_monitor.sh runs on the host, not inside the Podman network.
+# ${ELASTIC_HOST} (e.g. elasticsearch-pod) is only a DNS name inside the network.
+# Use localhost here because the ES pod maps hostPort:${ELASTIC_PORT}.
+ES_URL="http://localhost:${ELASTIC_PORT}"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
 
 CMD="${1:-up}"
@@ -56,6 +61,10 @@ case "$CMD" in
     # ── 1. Directories ──────────────────────────────────────────────────────────
     log "Creating required directories..."
     mkdir -p "${ES_DATA_DIR}"
+    # mkdir -p "${PROJECT_DIR}/data/filebeat-elk-infra"
+    # mkdir -p "${PROJECT_DIR}/data/elk-logs/elasticsearch"
+    # mkdir -p "${PROJECT_DIR}/data/elk-logs/logstash"
+    # mkdir -p "${PROJECT_DIR}/data/elk-logs/kibana"
 
     # ── 2. Fix Elasticsearch data dir permissions ──────────────────────────────
     # ES container writes as UID 1000 (elasticsearch). Use podman unshare so
@@ -67,7 +76,27 @@ case "$CMD" in
       chcon -Rt container_file_t "${ES_DATA_DIR}"
     fi
 
-    # ── 3. Fix logstash config file permissions ──────────────────────────────
+
+    # # ── 3. Fix Filebeat registry dir permissions ───────────────────────────────
+    # # Filebeat runs as UID 1000 and must write its registry to this hostPath dir.
+    # log "Fixing ${PROJECT_DIR}/data/filebeat-elk-infra ownership for Filebeat (UID 1000)..."
+    # podman unshare chown -R 1000:1000 "${PROJECT_DIR}/data/filebeat-elk-infra"
+    # if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
+    #   log "SELinux is enforcing — relabeling data/filebeat-elk-infra with container_file_t..."
+    #   chcon -Rt container_file_t "${PROJECT_DIR}/data/filebeat-elk-infra"
+    # fi
+    # # ── 4. Fix ELK shared log dir permissions ────────────────────────────────
+    # # ES, Logstash, and Kibana all write logs as UID 1000. These dirs are
+    # # hostPath volumes (see podman-kube.yml) and must be pre-chowned.
+    # log "Fixing ${PROJECT_DIR}/data/elk-logs ownership for ELK containers (UID 1000)..."
+    # podman unshare chown -R 1000:1000 "${PROJECT_DIR}/data/elk-logs"
+    # if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
+    #   log "SELinux is enforcing — relabeling data/elk-logs with container_file_t..."
+    #   chcon -Rt container_file_t "${PROJECT_DIR}/data/elk-logs"
+    # fi
+
+
+    # ── 5. Fix logstash config file permissions ──────────────────────────────
     # Logstash only needs read access; o+rX is sufficient.
     log "Setting permissions on logstash config files..."
     chmod -R o+rX logstash/
@@ -76,7 +105,7 @@ case "$CMD" in
       chcon -Rt container_file_t logstash/
     fi
 
-    # ── 4. Podman network ───────────────────────────────────────────────────────
+    # ── 6. Podman network ───────────────────────────────────────────────────────
     if ! podman network exists "$NETWORK"; then
       log "Creating Podman network '${NETWORK}'..."
       podman network create "$NETWORK"
@@ -84,54 +113,71 @@ case "$CMD" in
       log "Network '${NETWORK}' already exists — skipping."
     fi
 
-    log "Launching cluster pods via podman play kube..."
-    envsubst < "$KUBE_MANIFEST" | podman play kube --network "$NETWORK" -
+    # ── 7. Start Elasticsearch pod ──────────────────────────────────────────────
+    log "Starting Elasticsearch pod..."
+    envsubst < "$ES_KUBE_MANIFEST" | podman play kube --network "$NETWORK" -
 
-    # ── 5. Wait for Elasticsearch ───────────────────────────────────────────────
-    log "Waiting for Elasticsearch to be healthy..."
-    until curl -sf -u "$ES_AUTH" "${ES_URL}/_cluster/health" &>/dev/null; do
-      printf '.'; sleep 3
+    # ── 8. Wait for Elasticsearch livenessProbe to pass ─────────────────────────
+    # The livenessProbe in podman-kube-es.yml authenticates as the elastic superuser
+    # and hits /_cluster/health. Once it passes, Podman marks the container healthy.
+    # Only then is it safe to bootstrap security and start the apps pod.
+    ES_CONTAINER="elasticsearch-pod-elasticsearch"
+    log "Waiting for Elasticsearch container to become healthy..."
+    max_wait=300
+    elapsed=0
+    until [ "$(podman inspect --format='{{.State.Health.Status}}' "$ES_CONTAINER" 2>/dev/null)" = "healthy" ]; do
+      if [ "$elapsed" -ge "$max_wait" ]; then
+        die "Elasticsearch did not become healthy after ${max_wait}s"
+      fi
+      printf '.'; sleep 5
+      elapsed=$((elapsed + 5))
     done
-    echo " ready"
+    echo " healthy"
 
-    # ── 6. Bootstrap ES security (idempotent) ───────────────────────────────────
+    # ── 9. Bootstrap ES security (idempotent) ───────────────────────────────────
+    ES_API="${SCRIPT_DIR}/es-api.sh"
+    [[ -x "$ES_API" ]] || chmod +x "$ES_API"
+
     log "Setting kibana_system password..."
-    curl -sf -X POST -u "$ES_AUTH" \
-      -H "Content-Type: application/json" \
-      "${ES_URL}/_security/user/kibana_system/_password" \
-      -d "{\"password\":\"${KIBANA_SYSTEM_PASSWORD}\"}" >/dev/null
-    echo " done"
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+      set-password kibana_system "${KIBANA_SYSTEM_PASSWORD}"
 
     log "Creating logstash_writer role..."
-    curl -sf -X PUT -u "$ES_AUTH" \
-      -H "Content-Type: application/json" \
-      "${ES_URL}/_security/role/logstash_writer" \
-      -d '{
-        "cluster": ["monitor","manage_ilm","manage_index_templates"],
-        "indices": [{"names":["*"],"privileges":["create_index","write","read","manage"]}]
-      }' >/dev/null
-    echo " done"
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+      create-role logstash_writer \
+      '{"cluster":["monitor","manage_ilm","manage_index_templates"],"indices":[{"names":["*"],"privileges":["create_index","write","read","manage"]}]}'
 
     log "Creating logstash_writer user..."
-    curl -sf -X PUT -u "$ES_AUTH" \
-      -H "Content-Type: application/json" \
-      "${ES_URL}/_security/user/logstash_writer" \
-      -d "{\"password\":\"${LOGSTASH_PASSWORD}\",\"roles\":[\"logstash_writer\"],\"full_name\":\"Logstash Writer\"}" >/dev/null
-    echo " done"
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+      create-user logstash_writer \
+      "{\"password\":\"${LOGSTASH_PASSWORD}\",\"roles\":[\"logstash_writer\"],\"full_name\":\"Logstash Writer\"}"
+
+    # ── 10. Start Logstash pod ───────────────────────────────────────────────────
+    # ES is healthy and logstash_writer is provisioned — safe to start.
+    log "Starting Logstash pod..."
+    envsubst < "$LOGSTASH_KUBE_MANIFEST" | podman play kube --network "$NETWORK" -
+
+    # ── 11. Start Kibana pod ─────────────────────────────────────────────────────
+    # kibana_system password is provisioned — safe to start.
+    log "Starting Kibana pod..."
+    envsubst < "$KUBE_MANIFEST" | podman play kube --network "$NETWORK" -
 
     echo ""
     echo "────────────────────────────────────────"
     echo "  Stack is up"
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
-    echo "  Kibana        : http://localhost:5601  (user: elastic)"
-    echo "  Logstash beats: localhost:5050"
-    echo "  App mocks      : ./deployment/podman/podman-add-server.sh start <env_name>"
+    echo "  Kibana        : http://localhost:${KIBANA_PORT}  (user: elastic)"
+    echo "  Logstash beats: localhost:${LOGSTASH_PORT}"
     echo "────────────────────────────────────────"
     ;;
 
   down)
-    log "Stopping and removing cluster pods..."
-    envsubst < "$KUBE_MANIFEST" | podman play kube --down -
+    log "Stopping and removing Kibana pod..."
+    envsubst < "$KUBE_MANIFEST" | podman play kube --down - 2>/dev/null || true
+    log "Stopping and removing Logstash pod..."
+    envsubst < "$LOGSTASH_KUBE_MANIFEST" | podman play kube --down - 2>/dev/null || true
+    log "Stopping and removing Elasticsearch pod..."
+    envsubst < "$ES_KUBE_MANIFEST" | podman play kube --down - 2>/dev/null || true
     ;;
 
   status)
@@ -139,17 +185,18 @@ case "$CMD" in
     ;;
 
   logs)
-    # Container names follow the pattern: <pod-name>-<container-name>
+    # Pod name → Podman container name: {pod-name}-{container-name}
     declare -A POD_CONTAINERS=(
-      [elasticsearch]="elasticsearch-elasticsearch"
-      [logstash]="logstash-logstash"
-      [kibana]="kibana-kibana"
+      [elasticsearch]="elasticsearch-pod-elasticsearch"
+      [logstash]="logstash-pod-logstash"
+      [kibana]="kibana-pod-kibana"
+      [filebeat-elk-infra]="kibana-pod-filebeat-elk-infra"
     )
     if [[ -n "$SERVICE" ]]; then
       CONTAINER="${POD_CONTAINERS[$SERVICE]:-$SERVICE}"
       podman logs -f "$CONTAINER"
     else
-      for svc in elasticsearch logstash kibana; do
+      for svc in elasticsearch logstash kibana filebeat-elk-infra; do
         echo "=== ${svc} ==="
         podman logs "${POD_CONTAINERS[$svc]}" 2>/dev/null || true
       done

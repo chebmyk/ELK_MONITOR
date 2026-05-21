@@ -1,0 +1,22 @@
+# kibana.yml — Kibana node settings
+#
+# Connection settings come from environment variables (ELASTICSEARCH_HOSTS,
+# ELASTICSEARCH_USERNAME, ELASTICSEARCH_PASSWORD) injected by the pod spec.
+# Env vars take precedence over this file — safe to add only logging config here.
+#
+# JSON file logging lets the filebeat-infra sidecar parse and ship Kibana logs
+# to Elasticsearch alongside the Elasticsearch and Logstash internal logs.
+
+server.host: "0.0.0.0"
+xpack.fleet.agents.enabled: false
+
+# logging:
+#   appenders:
+#     file:
+#       type: file
+#       fileName: /var/log/kibana/kibana.log
+#       layout:
+#         type: json
+#   root:
+#     appenders: [default, file]
+#     level: info

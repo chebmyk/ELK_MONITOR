@@ -78,7 +78,7 @@ This index uses ES `update` with `doc_as_upsert`. The `config.app` and `config.d
 
 ## Common Pitfalls
 
-- **ARM64 Filebeat binary** — [`apps/Dockerfile`](apps/Dockerfile) downloads `filebeat-8.12.2-linux-arm64.tar.gz`. On x86/amd64 hosts, change `arm64` to `amd64` in the Dockerfile.
+- **ARM64 Filebeat binary** — [`apps/Dockerfile`](apps/Dockerfile) downloads `filebeat-9.4.1-linux-arm64.tar.gz`. On x86/amd64 hosts, change `arm64` to `amd64` in the Dockerfile.
 - **ES data directory** — `/Data/elasticsearch` must exist on the host. On Linux, it must be owned by UID 1000 (`chown -R 1000:1000 /Data/elasticsearch`). `monitor.sh` does this automatically on Linux.
 - **Slow Logstash cold start** — Logstash updates the `logstash-input-beats` plugin at every startup. This adds ~60 seconds to the first `docker compose up`.
 - **XML multiline in Filebeat** — XML configs are collected as one event using multiline anchored on `<?xml`. If an XML file does not start with `<?xml`, the event will not be collected correctly.

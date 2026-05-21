@@ -18,9 +18,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 cd "$PROJECT_DIR"
 
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.app-mock.yml"
 APPS_DIR="${PROJECT_DIR}/apps"
 STATE_FILE="${APPS_DIR}/.env_configs"   # persists env_name → config_name mappings
+
+# ── Parse flags (--agent, --all) before positional arguments ─────────────────
+USE_AGENT=false
+BUILD_ALL=false
+_PARSED_ARGS=()
+for _arg in "$@"; do
+  case "$_arg" in
+    --agent) USE_AGENT=true ;;
+    --all)   BUILD_ALL=true ;;
+    *)       _PARSED_ARGS+=("$_arg") ;;
+  esac
+done
+set -- "${_PARSED_ARGS[@]+"${_PARSED_ARGS[@]}"}"
+
+# ── Select tool variant (Filebeat default / Elastic Agent with --agent) ───────
+if [[ "$USE_AGENT" == "true" ]]; then
+  COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.app-mock-agent.yml"
+  IMAGE_TAG="app-mock-agent:latest"
+  DOCKERFILE="apps/deployment/Dockerfile.elastic-agent"
+else
+  COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.app-mock.yml"
+  IMAGE_TAG="app-mock:latest"
+  DOCKERFILE="apps/deployment/Dockerfile"
+fi
 
 log() { echo "[$(date '+%H:%M:%S')] ==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -30,14 +53,18 @@ set -a; source .env; set +a
 
 usage() {
   cat <<EOF
-Usage: $0 <command> [env_name] [config_name]
+Usage: $0 <command> [env_name] [config_name] [--agent]
+
+Flags:
+  --agent   Use Elastic Agent sidecar instead of Filebeat (default: Filebeat)
+  --all     (build only) Build both the Filebeat and Elastic Agent images
 
 Commands:
-  start  <env_name> [config]  Start a mock container; prompts for config if omitted
-  stop   <env_name>           Stop and remove the mock container
-  list                        List running environments and available configs
-  logs   <env_name>           Tail logs of a running mock environment
-  build                       Build (or rebuild) the shared app-mock image
+  start  <env_name> [config] [--agent]  Start a mock container; prompts for config if omitted
+  stop   <env_name>                     Stop and remove the mock container (auto-detects variant)
+  list                                  List running environments and available configs
+  logs   <env_name>                     Tail logs of a running mock environment
+  build  [--agent] [--all]              Build mock image(s)
 
 Available configs:
 $(for d in "${APPS_DIR}"/app_config_*/; do [[ -d "$d" ]] && echo "  $(basename "$d")"; done 2>/dev/null || echo "  (none found)")
@@ -45,8 +72,10 @@ $(for d in "${APPS_DIR}"/app_config_*/; do [[ -d "$d" ]] && echo "  $(basename "
 Examples:
   $0 start staging
   $0 start staging app_config_v1
+  $0 start staging app_config_v1 --agent
   $0 stop  staging
   $0 list
+  $0 build --all
 EOF
   exit 1
 }
@@ -101,11 +130,23 @@ remove_mapping() {
   mv "${STATE_FILE}.tmp" "$STATE_FILE"
 }
 
-# ── Ensure the app-mock image is built ────────────────────────────────────────
+# ── Ensure the correct mock image is built ───────────────────────────────────
 ensure_image() {
-  if ! docker image inspect app-mock:latest &>/dev/null; then
-    log "Building app-mock:latest..."
-    docker build -t app-mock:latest -f apps/deployment/Dockerfile apps/
+  if ! docker image inspect "${IMAGE_TAG}" &>/dev/null; then
+    log "Building ${IMAGE_TAG}..."
+    docker build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" apps/
+  fi
+}
+
+# ── Detect which compose file was used for a running container ────────────────
+detect_compose_file() {
+  local env_name="$1"
+  local img
+  img=$(docker inspect "app_mock_${env_name}" --format '{{.Config.Image}}' 2>/dev/null || true)
+  if [[ "$img" == *"agent"* ]]; then
+    echo "${SCRIPT_DIR}/docker-compose.app-mock-agent.yml"
+  else
+    echo "${SCRIPT_DIR}/docker-compose.app-mock.yml"
   fi
 }
 
@@ -160,7 +201,7 @@ case "$CMD" in
 
     log "Stopping mock environment '${ENV_NAME}'..."
     docker compose \
-      -f "$COMPOSE_FILE" \
+      -f "$(detect_compose_file "${ENV_NAME}")" \
       -p "mock_${ENV_NAME}" \
       down
 
@@ -194,8 +235,15 @@ case "$CMD" in
     ;;
 
   build)
-    log "Building app-mock:latest..."
-    docker build -t app-mock:latest -f apps/deployment/Dockerfile apps/
+    if [[ "$BUILD_ALL" == "true" ]]; then
+      log "Building app-mock:latest (Filebeat)..."
+      docker build -t app-mock:latest -f apps/deployment/Dockerfile apps/
+      log "Building app-mock-agent:latest (Elastic Agent)..."
+      docker build -t app-mock-agent:latest -f apps/deployment/Dockerfile.elastic-agent apps/
+    else
+      log "Building ${IMAGE_TAG}..."
+      docker build -t "${IMAGE_TAG}" -f "${DOCKERFILE}" apps/
+    fi
     log "Build complete"
     ;;
 

@@ -7,6 +7,14 @@
 # ELASTIC_USER and ELASTIC_PASSWORD are injected by docker-compose / podman
 # via the container environment (see deployment configs).
 
-xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+xpack.monitoring.enabled: false
+xpack.monitoring.elasticsearch.hosts: ["http://${ELASTIC_HOST}:${ELASTIC_PORT}"]
 xpack.monitoring.elasticsearch.username: "${ELASTIC_USER}"
 xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"
+
+# Structured JSON logging so the filebeat-elk-infra sidecar can parse log lines.
+# log.path writes to the volume shared with filebeat-elk-infra; without it
+# Logstash logs only to stdout and the shared directory stays empty.
+log.format: json
+log.level: info
+path.logs: /usr/share/logstash/logs

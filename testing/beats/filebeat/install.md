@@ -2,17 +2,17 @@ macOS tar.gz archive
 
 Example (CLI):
 
-> curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.12.2-darwin-x86_64.tar.gz
+> curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-9.4.1-darwin-x86_64.tar.gz
 
 👉 For Apple Silicon (M1/M2):
 
-> curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.12.2-darwin-aarch64.tar.gz
+> curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-9.4.1-darwin-aarch64.tar.gz
 
 📂 2. Extract Archive
 
-> tar -xzf filebeat-8.12.2-darwin-*.tar.gz
+> tar -xzf filebeat-9.4.1-darwin-*.tar.gz
 
-> cd filebeat-8.12.2-darwin-aarch64
+> cd filebeat-9.4.1-darwin-aarch64
 
 📁 3. Understand Folder Structure
 filebeat-8.x.x-darwin/

@@ -1,9 +1,27 @@
-# app_pipeline: single beats input on port 5050.
-# Handles heartbeats + XML configs; forwards app_log events to logs_pipeline
-# via pipeline-to-pipeline (no port conflict).
-- pipeline.id: app_pipeline
-  path.config: "/usr/share/logstash/pipeline/app.conf"
+# main_pipeline: single beats input on port 5050.
+# Pure dispatcher — routes events to sub-pipelines by fields.type.
+# Add a new pipeline entry below and a branch in main.conf to support new event types.
+- pipeline.id: main_pipeline
+  path.config: "/usr/share/logstash/pipeline/main.conf"
 
-# logs_pipeline: receives app_log events from app_pipeline internal queue.
-- pipeline.id: logs_pipeline
-  path.config: "/usr/share/logstash/pipeline/log.conf"
+# app_config_pipeline: processes app_config and app_db_config XML events from main_pipeline.
+- pipeline.id: app_config_pipeline
+  path.config: "/usr/share/logstash/pipeline/app-config.conf"
+
+# app_config_audit_pipeline: processes config_monitor events from main_pipeline.
+# Tracks all XML files; deduplicates by content hash.
+- pipeline.id: app_config_audit_pipeline
+  path.config: "/usr/share/logstash/pipeline/app-config-audit.conf"
+
+# app_logs_pipeline: processes app_log events from main_pipeline.
+- pipeline.id: app_logs_pipeline
+  path.config: "/usr/share/logstash/pipeline/app-logs.conf"
+
+# elk_infra_pipeline: processes elk_infra_log events (Elasticsearch, Logstash + Kibana logs)
+# from main_pipeline via pipeline-to-pipeline.
+- pipeline.id: elk_infra_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk-infra.conf"
+
+# heartbeat_pipeline: processes heartbeat health-check events from main_pipeline.
+# - pipeline.id: heartbeat_pipeline
+#   path.config: "/usr/share/logstash/pipeline/heartbeat.conf"

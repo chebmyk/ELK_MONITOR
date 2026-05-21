@@ -30,11 +30,23 @@ logs/
 **/logs/*
 
 # Filebeat
-beats/filebeat/filebeat-8.12.2-darwin-x86_64
-beats/filebeat/filebeat*.tar.gz
-beats/filebeat/filebeat-*-*/data/
-beats/filebeat/filebeat-*-*/logs/
-beats/filebeat/filebeat-*-*/registry/
+testing/beats/filebeat/filebeat-*
+testing/beats/filebeat/filebeat*.tar.gz
+testing/beats/filebeat/filebeat-*-*/data/
+testing/beats/filebeat/filebeat-*-*/logs/
+testing/beats/filebeat/filebeat-*-*/registry/
+
+# Elastic gent
+testing/elastic-agent/elastic-agent-*
+testing/elastic-agent/test/logs
+testing/elastic-agent/test/output
+
+# Elastic package
+testing/elastic-package/elastic-package*.zip
+
+
+
+
 
 # IDE
 .vscode/

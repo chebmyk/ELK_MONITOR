@@ -1,0 +1,121 @@
+# elastic-agent.yml — standalone Elastic Agent configuration for app_mock containers.
+#
+# Mirrors the inputs in filebeat.yml; all events are routed to the same Logstash
+# endpoint so the existing app_pipeline / logs_pipeline work unchanged.
+# fields.type values match the Logstash routing keys exactly.
+#
+# Standalone mode is active when no 'fleet:' block is present.
+
+outputs:
+  default:
+    type: logstash
+    hosts:
+      - "${LOGSTASH_HOST}:${LOGSTASH_PORT}"
+
+inputs:
+
+  # ── App log files (continuous tailing) ────────────────────────────────────
+  - id: app-logs-agent
+    type: filestream
+    streams:
+      - id: app-logs-stream
+        paths:
+          - /var/log/app_mock/*.log
+        scan_frequency: 5s
+        fields:
+          file_type: log
+          type: app_log
+          app: elk_monitor
+
+  # ── App XML config file (re-send on content change) ───────────────────────
+  - id: app-config-audit-agent
+    type: filestream
+    streams:
+      - id: app-config-audit-stream
+        paths:
+          - /app/config/app.xml
+        scan_frequency: 15s
+        # Content-based identity so in-place overwrites are detected.
+        # length=64 fingerprints files smaller than the 1024-byte default minimum.
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: app_config
+          app: elk_monitor
+        clean_inactive: 24h
+        # Collect the full XML document as a single event anchored on <?xml.
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── DB XML config files (re-send on content change) ───────────────────────
+  - id: db-config-audit-agent
+    type: filestream
+    streams:
+      - id: db-config-audit-stream
+        paths:
+          - /app/config/db/*.xml
+        scan_frequency: 15s
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: app_db_config
+          app: elk_monitor
+        #clean_inactive: 24h
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── Config monitor: all XML files recursively under /app/config ───────────
+  # Hash-based dedup in Logstash prevents false updates from formatting changes.
+  - id: config-history-agent
+    type: filestream
+    streams:
+      - id: config-history-stream
+        paths:
+          - /app/config/**/*.xml
+        scan_frequency: 15s
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: app_config_change
+          app: elk_monitor
+        #clean_inactive: 48h
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── Heartbeat JSON lines (one line per service per cycle) ─────────────────
+  # - id: app-heartbeat-agent
+  #   type: filestream
+  #   streams:
+  #     - id: app-heartbeat-stream
+  #       paths:
+  #         - /var/log/app_mock/heartbeat.log
+  #       scan_frequency: 5s
+  #       fields:
+  #         file_type: json
+  #         type: heartbeat
+  #         app: elk_monitor
+
+# ── Disable internal monitoring (no Fleet server available) ──────────────────
+agent:
+  monitoring:
+    enabled: false
+    logs: false
+    metrics: false
