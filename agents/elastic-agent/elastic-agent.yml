@@ -1,0 +1,22 @@
+# elastic-agent-mrx.yml
+# Minimal standalone Elastic Agent configuration for Murex mxres log ingestion.
+#
+# Scope: /Murex/IFC_TEST/logs/*.mxres.log only.
+# For the full multi-input configuration see filebeat-mrx.yml.
+#
+# Standalone mode is active when no 'fleet:' block is present.
+
+outputs:
+  default:
+    type: logstash
+    hosts:
+      - "logstash:5050"
+
+
+# all inputs are in single yml cofig file under inputs.d directory
+
+agent:
+  monitoring:
+    enabled: false
+    logs: false
+    metrics: false

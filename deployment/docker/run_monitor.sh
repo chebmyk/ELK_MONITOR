@@ -35,7 +35,21 @@ set -a; source .env; set +a
 : "${KIBANA_SYSTEM_PASSWORD:?must be set in .env}"
 : "${LOGSTASH_PASSWORD:?must be set in .env}"
 
-ES_URL="http://${ELASTIC_HOST}:${ELASTIC_PORT}"
+# Default scheme/cert dir if .env was not yet updated
+ELASTIC_SCHEME="${ELASTIC_SCHEME:-https}"
+ELK_CERTS_DIR="${ELK_CERTS_DIR:-${PROJECT_DIR}/certs}"
+CA_CERT="${ELK_CERTS_DIR}/ca/ca.crt"
+
+# Curl flags for talking to Elasticsearch from the host. When the CA cert
+# exists, validate it; otherwise allow self-signed (-k) so a fresh checkout
+# can bootstrap before generate-certs.sh has been run.
+if [[ -r "$CA_CERT" ]]; then
+  CURL_TLS=(--cacert "$CA_CERT")
+else
+  CURL_TLS=(-k)
+fi
+
+ES_URL="${ELASTIC_SCHEME}://localhost:${ELASTIC_PORT}"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
 
 # ─── subcommands ──────────────────────────────────────────────────────────────
@@ -45,8 +59,20 @@ SERVICE="${2:-}"
 case "$CMD" in
 
   up)
-    # Prepare bind-mount directory
+    # Prepare bind-mount directories
     mkdir -p "${ES_DATA_DIR}"
+    mkdir -p "${ELK_CERTS_DIR}"
+
+    # Generate certs if missing (idempotent)
+    if [[ ! -s "${ELK_CERTS_DIR}/ca/ca.crt" \
+       || ! -s "${ELK_CERTS_DIR}/elasticsearch/elasticsearch.crt" \
+       || ! -s "${ELK_CERTS_DIR}/kibana/kibana.crt" ]]; then
+      log "Certs missing in ${ELK_CERTS_DIR} — generating self-signed CA + leaves..."
+      "${PROJECT_DIR}/deployment/certs/generate-certs.sh"
+      # Refresh CURL_TLS now that the CA exists
+      CA_CERT="${ELK_CERTS_DIR}/ca/ca.crt"
+      CURL_TLS=(--cacert "$CA_CERT")
+    fi
 
     # # On Linux the ES container runs as UID 1000; fix ownership so it can write
     # if [[ "$(uname -s)" == "Linux" ]]; then
@@ -59,21 +85,21 @@ case "$CMD" in
     docker compose -f "$COMPOSE_FILE" up -d elasticsearch
 
     log "Waiting for Elasticsearch to be healthy..."
-    until curl -sf -u "$ES_AUTH" "${ES_URL}/_cluster/health" &>/dev/null; do
+    until curl -sf "${CURL_TLS[@]}" -u "$ES_AUTH" "${ES_URL}/_cluster/health" &>/dev/null; do
       printf '.'; sleep 3
     done
     echo " ready"
 
     # ── Step 2: Bootstrap users / roles (idempotent) ───────────────────────────
     log "Setting kibana_system password..."
-    curl -sf -X POST -u "$ES_AUTH" \
+    curl -sf "${CURL_TLS[@]}" -X POST -u "$ES_AUTH" \
       -H "Content-Type: application/json" \
       "${ES_URL}/_security/user/kibana_system/_password" \
       -d "{\"password\":\"${KIBANA_SYSTEM_PASSWORD}\"}" >/dev/null
     echo " done"
 
     log "Creating logstash_writer role..."
-    curl -sf -X PUT -u "$ES_AUTH" \
+    curl -sf "${CURL_TLS[@]}" -X PUT -u "$ES_AUTH" \
       -H "Content-Type: application/json" \
       "${ES_URL}/_security/role/logstash_writer" \
       -d '{
@@ -86,7 +112,7 @@ case "$CMD" in
     echo " done"
 
     log "Creating logstash_writer user..."
-    curl -sf -X PUT -u "$ES_AUTH" \
+    curl -sf "${CURL_TLS[@]}" -X PUT -u "$ES_AUTH" \
       -H "Content-Type: application/json" \
       "${ES_URL}/_security/user/logstash_writer" \
       -d "{
@@ -104,8 +130,9 @@ case "$CMD" in
     echo "────────────────────────────────────────"
     echo "  Stack is up"
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
-    echo "  Kibana        : http://localhost:${KIBANA_PORT}  (user: elastic)"
+    echo "  Kibana        : ${KIBANA_SCHEME:-https}://localhost:${KIBANA_PORT}  (user: elastic)"
     echo "  Logstash beats: localhost:${LOGSTASH_PORT}"
+    echo "  CA cert       : ${CA_CERT}"
     echo "────────────────────────────────────────"
     ;;
 

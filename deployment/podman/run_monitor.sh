@@ -43,13 +43,18 @@ set -a; source .env; set +a
 : "${KIBANA_SYSTEM_PASSWORD:?must be set in .env}"
 : "${LOGSTASH_PASSWORD:?must be set in .env}"
 
-export PROJECT_DIR
+# Default scheme/cert dir if .env was not yet updated
+ELASTIC_SCHEME="${ELASTIC_SCHEME:-https}"
+ELK_CERTS_DIR="${ELK_CERTS_DIR:-${PROJECT_DIR}/certs}"
+CA_CERT="${ELK_CERTS_DIR}/ca/ca.crt"
+
+export PROJECT_DIR ELK_CERTS_DIR ELASTIC_SCHEME
 
 NETWORK="elk-monitor"
 # run_monitor.sh runs on the host, not inside the Podman network.
 # ${ELASTIC_HOST} (e.g. elasticsearch-pod) is only a DNS name inside the network.
 # Use localhost here because the ES pod maps hostPort:${ELASTIC_PORT}.
-ES_URL="http://localhost:${ELASTIC_PORT}"
+ES_URL="${ELASTIC_SCHEME}://localhost:${ELASTIC_PORT}"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
 
 CMD="${1:-up}"
@@ -61,10 +66,19 @@ case "$CMD" in
     # ── 1. Directories ──────────────────────────────────────────────────────────
     log "Creating required directories..."
     mkdir -p "${ES_DATA_DIR}"
+    mkdir -p "${ELK_CERTS_DIR}"
     # mkdir -p "${PROJECT_DIR}/data/filebeat-elk-infra"
     # mkdir -p "${PROJECT_DIR}/data/elk-logs/elasticsearch"
     # mkdir -p "${PROJECT_DIR}/data/elk-logs/logstash"
     # mkdir -p "${PROJECT_DIR}/data/elk-logs/kibana"
+
+    # ── 1b. Generate TLS certs (idempotent) ────────────────────────────────────
+    if [[ ! -s "${ELK_CERTS_DIR}/ca/ca.crt" \
+       || ! -s "${ELK_CERTS_DIR}/elasticsearch/elasticsearch.crt" \
+       || ! -s "${ELK_CERTS_DIR}/kibana/kibana.crt" ]]; then
+      log "Certs missing in ${ELK_CERTS_DIR} — generating self-signed CA + leaves..."
+      "${PROJECT_DIR}/deployment/certs/generate-certs.sh"
+    fi
 
     # ── 2. Fix Elasticsearch data dir permissions ──────────────────────────────
     # ES container writes as UID 1000 (elasticsearch). Use podman unshare so
@@ -74,6 +88,14 @@ case "$CMD" in
     if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
       log "SELinux is enforcing — relabeling ${ES_DATA_DIR} with container_file_t..."
       chcon -Rt container_file_t "${ES_DATA_DIR}"
+    fi
+
+    # ── 2b. Fix certs dir permissions for ES / Kibana / Logstash (UID 1000) ───
+    log "Fixing ${ELK_CERTS_DIR} ownership for ELK containers (UID 1000)..."
+    podman unshare chown -R 1000:1000 "${ELK_CERTS_DIR}"
+    if command -v getenforce &>/dev/null && getenforce 2>/dev/null | grep -q Enforcing; then
+      log "SELinux is enforcing — relabeling ${ELK_CERTS_DIR} with container_file_t..."
+      chcon -Rt container_file_t "${ELK_CERTS_DIR}"
     fi
 
 
@@ -139,16 +161,16 @@ case "$CMD" in
     [[ -x "$ES_API" ]] || chmod +x "$ES_API"
 
     log "Setting kibana_system password..."
-    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" --cacert "$CA_CERT" \
       set-password kibana_system "${KIBANA_SYSTEM_PASSWORD}"
 
     log "Creating logstash_writer role..."
-    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" --cacert "$CA_CERT" \
       create-role logstash_writer \
       '{"cluster":["monitor","manage_ilm","manage_index_templates"],"indices":[{"names":["*"],"privileges":["create_index","write","read","manage"]}]}'
 
     log "Creating logstash_writer user..."
-    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" \
+    "$ES_API" --url "$ES_URL" --auth "$ES_AUTH" --cacert "$CA_CERT" \
       create-user logstash_writer \
       "{\"password\":\"${LOGSTASH_PASSWORD}\",\"roles\":[\"logstash_writer\"],\"full_name\":\"Logstash Writer\"}"
 
@@ -166,8 +188,9 @@ case "$CMD" in
     echo "────────────────────────────────────────"
     echo "  Stack is up"
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
-    echo "  Kibana        : http://localhost:${KIBANA_PORT}  (user: elastic)"
+    echo "  Kibana        : ${KIBANA_SCHEME}://localhost:${KIBANA_PORT}  (user: elastic)"
     echo "  Logstash beats: localhost:${LOGSTASH_PORT}"
+    echo "  CA cert       : ${CA_CERT}"
     echo "────────────────────────────────────────"
     ;;
 

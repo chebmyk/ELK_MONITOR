@@ -1,0 +1,8 @@
+# Generated certs/keys are not committed.
+# Re-create them with: ./deployment/certs/generate-certs.sh
+*.crt
+*.key
+*.csr
+*.srl
+*.ext
+!.gitignore

@@ -43,7 +43,7 @@ testing/elastic-agent/test/output
 
 # Elastic package
 testing/elastic-package/elastic-package*.zip
-
+testing/**/*.exe
 
 
 

@@ -27,16 +27,25 @@ app_mock_v1 / app_mock_v2
 Filebeat (sidecar in same container)
   └── ships to Logstash :5050
 
-Logstash — two pipelines (pipelines.yml):
-  app_pipeline (app.conf)
-    ├── heartbeat   → Elasticsearch: health-status        (upsert by env+service)
-    ├── app_config  → Elasticsearch: app-configs-current  (upsert by host.name)
-    │               → Elasticsearch: app-configs-history  (append)
-    ├── app_db_config → same dual-write as app_config
-    └── app_log     → pipeline-to-pipeline → logs_pipeline
-
-  logs_pipeline (log.conf)
-    └── app_log     → Elasticsearch: logs-app-{host}-{date} (daily index)
+Logstash — two-tier routing (pipelines.yml):
+  main_pipeline (main.conf)   ← routes by fields.type prefix to a category dispatcher
+     ├── app_dispatch (_dispatch.conf in pipeline/app/)
+     ├── elk_dispatch (_dispatch.conf in pipeline/elk/)
+     └── mrx_dispatch (_dispatch.conf in pipeline/mrx/)
+          ├── mrx_logs_dispatch   (pipeline/mrx/logs/)
+          └── mrx_config_dispatch (pipeline/mrx/config/)
+  ├── app category (pipeline/app/)
+  │   ├── app_config    → Elasticsearch: app-main-config-current  (upsert by host.name)
+  │   │                 → (partial update so config.app / config.db never overwrite each other)
+  │   ├── app_db_config → same dual-write as app_config
+  │   ├── app_log       → Elasticsearch: app-logs-{host}-{date}
+  │   └── heartbeat     → Elasticsearch: health-status (upsert)  [disabled]
+  ├── elk category (pipeline/elk/)
+  │   └── elk_infra_log → Elasticsearch: logs-elk-{component}-{date}
+  └── mrx category (pipeline/mrx/)
+      ├── mrx_service_log / mrx_server_log / … → mrx-log-{host}-{date}
+      ├── mrx_service_events_log              → mrx-events-{host}-{date}
+      └── mrx_service_access_log              → mrx-access-{host}-{date}
 ```
 
 ### Elasticsearch Indices

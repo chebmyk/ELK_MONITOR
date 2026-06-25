@@ -1,0 +1,32 @@
+# elasticsearch.yml — Elasticsearch node settings
+#
+# Mounted at /usr/share/elasticsearch/config/elasticsearch.yml in both the
+# Docker and Podman deployments. Container env vars (ELASTIC_PASSWORD,
+# ES_JAVA_OPTS) still come from the deployment configs.
+#
+# Cert paths point inside the read-only bind-mounted certs directory
+# (host: ${ELK_CERTS_DIR} → container: /usr/share/elasticsearch/config/certs).
+
+# ── Cluster / node ────────────────────────────────────────────────────────────
+cluster.name: elk-monitor
+node.name: elasticsearch
+network.host: 0.0.0.0
+discovery.type: single-node
+
+# ── Security ──────────────────────────────────────────────────────────────────
+xpack.security.enabled: true
+
+# ── HTTPS for the REST layer ──────────────────────────────────────────────────
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.key:                    /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.key
+xpack.security.http.ssl.certificate:            /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.crt
+xpack.security.http.ssl.certificate_authorities: ["/usr/share/elasticsearch/config/certs/ca/ca.crt"]
+
+# ── TLS for the transport layer ───────────────────────────────────────────────
+# Required by the bootstrap check whenever network.host binds to a non-loopback
+# address, even for single-node clusters. Reuses the same leaf cert.
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.key:                    /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.key
+xpack.security.transport.ssl.certificate:            /usr/share/elasticsearch/config/certs/elasticsearch/elasticsearch.crt
+xpack.security.transport.ssl.certificate_authorities: ["/usr/share/elasticsearch/config/certs/ca/ca.crt"]

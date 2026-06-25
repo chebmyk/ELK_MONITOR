@@ -4,6 +4,8 @@
 #   ${LOGSTASH_PASSWORD}  — from .env
 #   ${PROJECT_DIR}        — absolute path to this repo, set by run_monitor.sh
 #   ${ELK_VERSION}        — ELK stack version, e.g. 9.4.1  (from .env)
+#   ${ELK_CERTS_DIR}      — TLS cert directory bind-mounted into Logstash (from .env)
+#   ${ELASTIC_SCHEME}     — http or https                  (from .env, default https)
 #   ${ELASTIC_HOST}       — Elasticsearch hostname (from .env, default elasticsearch-pod)
 #   ${ELASTIC_PORT}        — Elasticsearch HTTP port         (from .env, default 9200)
 #   ${LOGSTASH_PORT}       — Logstash Beats input port       (from .env, default 5050)
@@ -53,6 +55,8 @@ spec:
           value: "${ELASTIC_HOST}"
         - name: ELASTIC_PORT
           value: "${ELASTIC_PORT}"
+        - name: ELASTIC_SCHEME
+          value: "${ELASTIC_SCHEME}"
       ports:
         - containerPort: ${LOGSTASH_PORT}
           hostPort: ${LOGSTASH_PORT}
@@ -64,6 +68,10 @@ spec:
           mountPath: /usr/share/logstash/config/pipelines.yml
         - name: logstash-yml
           mountPath: /usr/share/logstash/config/logstash.yml
+        # Logstash only validates the ES server cert — no leaf key/cert needed.
+        - name: ca-cert
+          mountPath: /usr/share/logstash/config/certs/ca
+          readOnly: true
         # Shared with filebeat-elk-infra: Filebeat reads Logstash logs from this volume
         #- name: logstash-logs
         #  mountPath: /usr/share/logstash/logs
@@ -81,6 +89,10 @@ spec:
       hostPath:
         path: ${PROJECT_DIR}/logstash/logstash.yml
         type: File
+    - name: ca-cert
+      hostPath:
+        path: ${ELK_CERTS_DIR}/ca
+        type: Directory
 
     # - name: logstash-logs
     #   hostPath:

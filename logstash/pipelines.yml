@@ -1,27 +1,57 @@
-# main_pipeline: single beats input on port 5050.
-# Pure dispatcher — routes events to sub-pipelines by fields.type.
-# Add a new pipeline entry below and a branch in main.conf to support new event types.
+# ╔═══════════════════════════════════════════════════════════════════════════════╗
+# ║  Logstash Pipelines  –  two-tier routing                                    ║
+# ║                                                                              ║
+# ║   beats:5050                                                                 ║
+# ║     └─ main_pipeline (main.conf)        ← routes by category prefix          ║
+# ║          ├─ app_in   → app_dispatch     → leaf app_*    pipelines            ║
+# ║          ├─ elk_in   → elk_dispatch     → leaf elk_*    pipelines            ║
+# ║          └─ mrx_in   → mrx_dispatch     → mrx_logs_in   → leaf mrx_*_log     ║
+# ║                                          → mrx_config_in → leaf mrx_config_* ║
+# ║                                                                              ║
+# ║  Adding a new event TYPE inside an existing category:                        ║
+# ║    1. Edit pipeline/<category>/_dispatch.conf (add a branch).                ║
+# ║    2. Register the new leaf pipeline below.                                  ║
+# ║    No changes to main.conf.                                                  ║
+# ║                                                                              ║
+# ║  Adding a NEW category:                                                      ║
+# ║    1. Create pipeline/<category>/_dispatch.conf with input addr "<cat>_in".  ║
+# ║    2. Add ONE branch in main.conf.                                           ║
+# ║    3. Register dispatcher + leaves below.                                    ║
+# ╚═══════════════════════════════════════════════════════════════════════════════╝
+
+# ── main router ──────────────────────────────────────────────────────────────
 - pipeline.id: main_pipeline
   path.config: "/usr/share/logstash/pipeline/main.conf"
 
-# app_config_pipeline: processes app_config and app_db_config XML events from main_pipeline.
+
+# ── app  (pipeline/app/) ────────────────────────────────────────────────────
+# Mock application configs, logs, audits, and health checks.
+
+- pipeline.id: app_dispatch_pipeline
+  path.config: "/usr/share/logstash/pipeline/app/_dispatch.conf"
+
 - pipeline.id: app_config_pipeline
-  path.config: "/usr/share/logstash/pipeline/app-config.conf"
+  path.config: "/usr/share/logstash/pipeline/app/app-config.conf"
 
-# app_config_audit_pipeline: processes config_monitor events from main_pipeline.
-# Tracks all XML files; deduplicates by content hash.
 - pipeline.id: app_config_audit_pipeline
-  path.config: "/usr/share/logstash/pipeline/app-config-audit.conf"
+  path.config: "/usr/share/logstash/pipeline/app/app-config-audit.conf"
 
-# app_logs_pipeline: processes app_log events from main_pipeline.
 - pipeline.id: app_logs_pipeline
-  path.config: "/usr/share/logstash/pipeline/app-logs.conf"
+  path.config: "/usr/share/logstash/pipeline/app/app-logs.conf"
 
-# elk_infra_pipeline: processes elk_infra_log events (Elasticsearch, Logstash + Kibana logs)
-# from main_pipeline via pipeline-to-pipeline.
-- pipeline.id: elk_infra_pipeline
-  path.config: "/usr/share/logstash/pipeline/elk-infra.conf"
-
-# heartbeat_pipeline: processes heartbeat health-check events from main_pipeline.
 # - pipeline.id: heartbeat_pipeline
-#   path.config: "/usr/share/logstash/pipeline/heartbeat.conf"
+#   path.config: "/usr/share/logstash/pipeline/app/heartbeat.conf"
+
+
+# ── elk  (pipeline/elk/) ────────────────────────────────────────────────────
+# Elasticsearch, Logstash, and Kibana infrastructure logs.
+
+- pipeline.id: elk_dispatch_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/_dispatch.conf"
+
+- pipeline.id: elk_infra_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/elk-infra.conf"
+
+# Generic sink for events that fail parsing in any leaf pipeline.
+- pipeline.id: dropped_events_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/dropped-events.conf"

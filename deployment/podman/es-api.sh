@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # es-api.sh — Elasticsearch REST API helper for ELK Monitor bootstrap
 #
-# Usage: es-api.sh [--url URL] [--auth USER:PASS] <command> [args...]
+# Usage: es-api.sh [--url URL] [--auth USER:PASS] [--cacert FILE] <command> [args...]
 #
 # Commands:
 #   set-password  <username> <password>
@@ -13,9 +13,10 @@
 #   get-user      <username>
 #   get-role      <role-name>
 #
-# Env vars (overridden by --url / --auth flags):
-#   ES_URL   — Elasticsearch base URL  (default: http://localhost:9200)
-#   ES_AUTH  — user:password           (default: elastic:changeme)
+# Env vars (overridden by flags):
+#   ES_URL    — Elasticsearch base URL  (default: http://localhost:9200)
+#   ES_AUTH   — user:password           (default: elastic:changeme)
+#   ES_CACERT — path to CA cert         (used when ES_URL is https://; falls back to -k)
 #
 # Exit codes:
 #   0  — success
@@ -32,15 +33,29 @@ die3() { echo "ERROR: $*" >&2; exit 3; }
 # ── parse global flags ────────────────────────────────────────────────────────
 _url="${ES_URL:-http://localhost:9200}"
 _auth="${ES_AUTH:-elastic:changeme}"
+_cacert="${ES_CACERT:-}"
 
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
-    --url)   _url="$2";  shift 2 ;;
-    --auth)  _auth="$2"; shift 2 ;;
-    --help)  grep '^#' "$0" | sed 's/^# \?//'; exit 0 ;;
-    *)       die "Unknown flag: $1" ;;
+    --url)    _url="$2";    shift 2 ;;
+    --auth)   _auth="$2";   shift 2 ;;
+    --cacert) _cacert="$2"; shift 2 ;;
+    --help)   grep '^#' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *)        die "Unknown flag: $1" ;;
   esac
 done
+
+# Build the TLS curl args. When the URL is https and a CA file is provided
+# (and readable), use --cacert; otherwise fall back to -k for self-signed
+# bootstrap. For http URLs the args are empty.
+_tls=()
+if [[ "$_url" == https://* ]]; then
+  if [[ -n "$_cacert" && -r "$_cacert" ]]; then
+    _tls=(--cacert "$_cacert")
+  else
+    _tls=(-k)
+  fi
+fi
 
 [[ $# -ge 1 ]] || { grep '^# Usage' "$0" | sed 's/^# //'; exit 1; }
 
@@ -77,6 +92,7 @@ case "$COMMAND" in
   set-password)
     [[ $# -eq 2 ]] || die "Usage: set-password <username> <password>"
     _request "set-password(${1})" \
+      "${_tls[@]}" \
       -X POST -u "$_auth" \
       -H "Content-Type: application/json" \
       "${_url}/_security/user/${1}/_password" \
@@ -86,6 +102,7 @@ case "$COMMAND" in
   create-role)
     [[ $# -eq 2 ]] || die "Usage: create-role <role-name> <json>"
     _request "create-role(${1})" \
+      "${_tls[@]}" \
       -X PUT -u "$_auth" \
       -H "Content-Type: application/json" \
       "${_url}/_security/role/${1}" \
@@ -95,6 +112,7 @@ case "$COMMAND" in
   create-user)
     [[ $# -eq 2 ]] || die "Usage: create-user <username> <json>"
     _request "create-user(${1})" \
+      "${_tls[@]}" \
       -X PUT -u "$_auth" \
       -H "Content-Type: application/json" \
       "${_url}/_security/user/${1}" \
@@ -104,6 +122,7 @@ case "$COMMAND" in
   delete-user)
     [[ $# -eq 1 ]] || die "Usage: delete-user <username>"
     _request "delete-user(${1})" \
+      "${_tls[@]}" \
       -X DELETE -u "$_auth" \
       "${_url}/_security/user/${1}"
     ;;
@@ -111,6 +130,7 @@ case "$COMMAND" in
   delete-role)
     [[ $# -eq 1 ]] || die "Usage: delete-role <role-name>"
     _request "delete-role(${1})" \
+      "${_tls[@]}" \
       -X DELETE -u "$_auth" \
       "${_url}/_security/role/${1}"
     ;;
@@ -118,6 +138,7 @@ case "$COMMAND" in
   get-user)
     [[ $# -eq 1 ]] || die "Usage: get-user <username>"
     _request "get-user(${1})" \
+      "${_tls[@]}" \
       -u "$_auth" \
       "${_url}/_security/user/${1}"
     ;;
@@ -125,6 +146,7 @@ case "$COMMAND" in
   get-role)
     [[ $# -eq 1 ]] || die "Usage: get-role <role-name>"
     _request "get-role(${1})" \
+      "${_tls[@]}" \
       -u "$_auth" \
       "${_url}/_security/role/${1}"
     ;;
@@ -132,6 +154,7 @@ case "$COMMAND" in
   health)
     status="${1:-yellow}"
     _request "health" \
+      "${_tls[@]}" \
       -u "$_auth" \
       "${_url}/_cluster/health?wait_for_status=${status}&timeout=5s"
     ;;

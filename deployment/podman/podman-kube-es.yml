@@ -2,9 +2,11 @@
 #
 # DO NOT apply directly. Use run_monitor.sh which substitutes these placeholders:
 #   ${ELASTIC_PASSWORD}  — from .env
+#   ${PROJECT_DIR}       — absolute path to this repo, set by run_monitor.sh
 #   ${ELK_VERSION}       — ELK stack version, e.g. 9.4.1  (from .env)
 #   ${ES_DATA_DIR}       — Elasticsearch data directory    (from .env, default /Data/elastic/elasticsearch)
-#   ${ELASTIC_PORT}      — Elasticsearch HTTP port         (from .env, default 9200)
+#   ${ELK_CERTS_DIR}     — TLS cert directory bind-mounted into ES (from .env, default /Data/elastic/certs)
+#   ${ELASTIC_PORT}      — Elasticsearch HTTPS port        (from .env, default 9200)
 #
 # Pod is named 'elasticsearch' so that other pods on the elk-monitor network
 # can reach it at elasticsearch:${ELASTIC_PORT} without changing any config.
@@ -33,10 +35,6 @@ spec:
     - name: elasticsearch
       image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
       env:
-        - name: discovery.type
-          value: single-node
-        - name: xpack.security.enabled
-          value: "true"
         - name: ELASTIC_PASSWORD
           value: "${ELASTIC_PASSWORD}"
         - name: ES_JAVA_OPTS
@@ -56,8 +54,9 @@ spec:
             - -c
             - >-
               curl -sf
+              --cacert /usr/share/elasticsearch/config/certs/ca/ca.crt
               -u "elastic:${ELASTIC_PASSWORD}"
-              "http://localhost:${ELASTIC_PORT}/_cluster/health?wait_for_status=yellow&timeout=3s"
+              "https://localhost:${ELASTIC_PORT}/_cluster/health?wait_for_status=yellow&timeout=3s"
               >/dev/null
         initialDelaySeconds: 30
         periodSeconds: 10
@@ -67,6 +66,16 @@ spec:
       volumeMounts:
         - name: es-data
           mountPath: /usr/share/elasticsearch/data
+        - name: es-yml
+          mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          readOnly: true
+        # Per-component cert isolation (Option 1): ES sees only its own key + CA.
+        - name: ca-cert
+          mountPath: /usr/share/elasticsearch/config/certs/ca
+          readOnly: true
+        - name: es-cert
+          mountPath: /usr/share/elasticsearch/config/certs/elasticsearch
+          readOnly: true
         # Shared with filebeat-elk-infra: Filebeat reads ES logs from this volume
         # - name: es-logs
         #   mountPath: /usr/share/elasticsearch/logs
@@ -76,6 +85,18 @@ spec:
       hostPath:
         path: ${ES_DATA_DIR}
         type: DirectoryOrCreate
+    - name: es-yml
+      hostPath:
+        path: ${PROJECT_DIR}/elastic/elasticsearch.yml
+        type: File
+    - name: ca-cert
+      hostPath:
+        path: ${ELK_CERTS_DIR}/ca
+        type: Directory
+    - name: es-cert
+      hostPath:
+        path: ${ELK_CERTS_DIR}/elasticsearch
+        type: Directory
 
     # - name: es-logs
     #   hostPath:

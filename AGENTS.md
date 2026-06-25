@@ -62,11 +62,35 @@ Every Filebeat input sets `fields.type`; all Logstash routing logic is gated on 
 | `app_log` | `*.log` | `logs-app-{hostname}-{YYYY.MM.dd}` (via pipeline-to-pipeline) |
 | `config_monitor` | all XML under `/app/config` | `app-configs-monitor` (hash-based dedup) |
 
-### Logstash pipelines
+### Logstash pipelines — two-tier routing
 
-Two pipelines defined in [`logstash/pipelines.yml`](logstash/pipelines.yml):
-- `app_pipeline` ([`logstash/pipeline/app.conf`](logstash/pipeline/app.conf)): receives all Beats input; handles heartbeat, XML configs, and forwards `app_log` events.
-- `logs_pipeline` ([`logstash/pipeline/log.conf`](logstash/pipeline/log.conf)): receives `app_log` events via pipeline-to-pipeline; runs multi-step grok parsing.
+Pipelines are defined in [`logstash/pipelines.yml`](logstash/pipelines.yml), organised by category.
+
+```
+beats:5050
+  └─ main_pipeline (main.conf)        ← routes by fields.type prefix to a CATEGORY
+       ├─ app_in   → app_dispatch     → leaf app_*  pipelines
+       ├─ elk_in   → elk_dispatch     → leaf elk_*  pipelines
+       └─ mrx_in   → mrx_dispatch     → leaf mrx_*  pipelines
+```
+
+[`main.conf`](logstash/pipeline/main.conf) only knows about categories. Each category owns a `_dispatch.conf` that routes `fields.type → leaf pipeline`.
+
+| Category | Directory | Dispatcher input addr | Leaves |
+|---|---|---|---|
+| **app** | `pipeline/app/` | `app_in` | `app_config_pipeline`, `app_config_audit_pipeline`, `app_logs_pipeline`, `heartbeat_pipeline` (disabled) |
+| **elk** | `pipeline/elk/` | `elk_in` | `elk_infra_pipeline` |
+| **mrx** | `pipeline/mrx/` | `mrx_in` | Sub-categories: `mrx/logs/` (10 leaf pipelines — service, server, connectivity, integrations, …) and `mrx/config/` (`mrx_config_pipeline`). |
+
+**Adding a new event TYPE inside an existing category:**
+1. Add a branch in `pipeline/<category>/_dispatch.conf`.
+2. Register the new leaf pipeline in `pipelines.yml`.
+  No changes to `main.conf`.
+
+**Adding a new CATEGORY:**
+1. Create `pipeline/<category>/_dispatch.conf` with `input { pipeline { address => "<cat>_in" } }`.
+2. Add ONE branch in `main.conf`.
+3. Register the dispatcher and leaves in `pipelines.yml`.
 
 ### `app-configs-current` partial updates
 
@@ -107,9 +131,14 @@ deployment/
     podman-kube.yml       — Kube manifest for the ELK cluster
     podman-run.sh         — CLI wrapper for the Podman ELK cluster
 logstash/
-  pipelines.yml           — declares app_pipeline and logs_pipeline
-  pipeline/app.conf       — main routing pipeline
-  pipeline/log.conf       — log-specific grok parsing pipeline
+  pipelines.yml           — declares all pipelines, organised by category
+  pipeline/
+    main.conf             — top-level router (fields.type prefix → category address)
+    app/                  — app monitoring category (_dispatch.conf + leaves)
+    elk/                  — ELK infrastructure category (_dispatch.conf + leaves)
+    mrx/                  — Murex category: nested dispatch into
+                            mrx/logs/   (_dispatch.conf + 10 mrx-log-*.conf leaves)
+                            mrx/config/ (_dispatch.conf + mrx-config.conf)
 kibana/
   setup.sh                — creates all Kibana Data Views via REST API
   dashboards/             — exported .ndjson dashboard definitions

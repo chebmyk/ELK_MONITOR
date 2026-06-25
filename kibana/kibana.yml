@@ -10,6 +10,19 @@
 server.host: "0.0.0.0"
 xpack.fleet.agents.enabled: false
 
+# ── HTTPS for the browser-facing Kibana endpoint ─────────────────────────────
+# Cert paths point inside the read-only bind-mounted certs directory
+# (host: ${ELK_CERTS_DIR} → container: /usr/share/kibana/config/certs).
+server.ssl.enabled: true
+server.ssl.certificate: "/usr/share/kibana/config/certs/kibana/kibana.crt"
+server.ssl.key: "/usr/share/kibana/config/certs/kibana/kibana.key"
+
+# ── HTTPS for Kibana → Elasticsearch ─────────────────────────────────────────
+# ELASTICSEARCH_HOSTS / USERNAME / PASSWORD are still injected via env vars
+# from the deployment configs.
+elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/config/certs/ca/ca.crt"]
+elasticsearch.ssl.verificationMode: certificate
+
 # logging:
 #   appenders:
 #     file:

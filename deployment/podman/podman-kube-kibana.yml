@@ -4,7 +4,9 @@
 #   ${KIBANA_SYSTEM_PASSWORD}   — from .env
 #   ${PROJECT_DIR}              — absolute path to this repo, set by run_monitor.sh
 #   ${ELK_VERSION}              — ELK stack version, e.g. 9.4.1  (from .env)
-#   ${ELASTIC_HOST}             — Elasticsearch hostname (from .env, default elasticsearch)
+#   ${ELK_CERTS_DIR}            — TLS cert directory bind-mounted into Kibana (from .env)
+#   ${ELASTIC_SCHEME}           — http or https                  (from .env, default https)
+#   ${ELASTIC_HOST}             — Elasticsearch hostname (from .env, default elasticsearch-pod)
 #   ${ELASTIC_PORT}             — Elasticsearch HTTP port         (from .env, default 9200)
 #   ${KIBANA_PORT}              — Kibana HTTP port                (from .env, default 5601)
 #
@@ -39,11 +41,15 @@ spec:
       # before this pod is started — use the default Kibana entrypoint.
       env:
         - name: ELASTICSEARCH_HOSTS
-          value: "http://${ELASTIC_HOST}:${ELASTIC_PORT}"
+          value: "${ELASTIC_SCHEME}://${ELASTIC_HOST}:${ELASTIC_PORT}"
         - name: ELASTICSEARCH_USERNAME
           value: kibana_system
         - name: ELASTICSEARCH_PASSWORD
           value: "${KIBANA_SYSTEM_PASSWORD}"
+        - name: ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES
+          value: "/usr/share/kibana/config/certs/ca/ca.crt"
+        - name: ELASTICSEARCH_SSL_VERIFICATIONMODE
+          value: "certificate"
       ports:
         - containerPort: ${KIBANA_PORT}
           hostPort: ${KIBANA_PORT}
@@ -51,6 +57,13 @@ spec:
       volumeMounts:
         - name: kibana-yml
           mountPath: /usr/share/kibana/config/kibana.yml
+        # Per-component cert isolation (Option 1): Kibana sees only its own key + CA.
+        - name: ca-cert
+          mountPath: /usr/share/kibana/config/certs/ca
+          readOnly: true
+        - name: kibana-cert
+          mountPath: /usr/share/kibana/config/certs/kibana
+          readOnly: true
         # Shared with filebeat-elk-infra: Filebeat reads Kibana JSON logs from this volume
         #- name: kibana-logs
         #  mountPath: /var/log/kibana
@@ -85,6 +98,14 @@ spec:
       hostPath:
         path: ${PROJECT_DIR}/kibana/kibana.yml
         type: File
+    - name: ca-cert
+      hostPath:
+        path: ${ELK_CERTS_DIR}/ca
+        type: Directory
+    - name: kibana-cert
+      hostPath:
+        path: ${ELK_CERTS_DIR}/kibana
+        type: Directory
 
     # - name: kibana-logs
     #   hostPath:
