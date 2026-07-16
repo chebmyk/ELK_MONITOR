@@ -1,0 +1,32 @@
+filebeat.inputs:
+  - type: filestream
+    id: app-config-filebeat
+    enabled: true
+    scan_frequency: 5s
+    file_identity.path: ~
+    paths:
+      - ..\test\config\app.xml
+    fields:
+      file_type: xml
+      type: app_config
+      app: elk_monitor
+    
+    # Collect the full XML document as a single event (not line-by-line).
+    # Pattern anchors on the XML declaration line (<?xml ...). All subsequent
+    # lines (root element, children, closing tags) are appended to that event.
+    # Files without an <?xml declaration are collected as one event by default.
+    parsers:
+      - multiline:
+          type: pattern
+          pattern: '^\s*<\?xml'
+          negate: true
+          match: after
+
+
+
+# output.console:
+#   pretty: true
+
+output.file:
+  path: "filebeat-output-%{+yyyy.MM.dd}"
+  filename: filebeat_test_input

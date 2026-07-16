@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELK_VERSION}
+    container_name: elasticsearch
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "${ELASTIC_PORT}:${ELASTIC_PORT}"
+    volumes:
+      - ${ES_DATA_DIR}:/usr/share/elasticsearch/data
+      # Per-component cert isolation (Option 1): ES sees only its own key + CA.
+      - ${ELK_CERTS_DIR}/ca:/usr/share/elasticsearch/config/certs/ca:ro
+      - ${ELK_CERTS_DIR}/elasticsearch:/usr/share/elasticsearch/config/certs/elasticsearch:ro
+      - ../../elastic/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --cacert /usr/share/elasticsearch/config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} https://localhost:${ELASTIC_PORT}/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:${ELK_VERSION}
+    container_name: logstash
+    command: >
+      bash -c "
+      /usr/share/logstash/bin/logstash-plugin update logstash-input-beats &&
+      /usr/share/logstash/bin/logstash
+      "
+    environment:
+      - ELASTIC_USER=logstash_writer
+      - ELASTIC_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_HOST=${ELASTIC_HOST}
+      - ELASTIC_PORT=${ELASTIC_PORT}
+      - ELASTIC_SCHEME=${ELASTIC_SCHEME}
+    volumes:
+      - ../../logstash/pipeline:/usr/share/logstash/pipeline
+      - ../../logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+      - ../../logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+      # Logstash only validates the ES server cert — no leaf key/cert needed.
+      - ${ELK_CERTS_DIR}/ca:/usr/share/logstash/config/certs/ca:ro
+    ports:
+      - "${LOGSTASH_PORT}:${LOGSTASH_PORT}"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELK_VERSION}
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=${ELASTIC_SCHEME}://${ELASTIC_HOST}:${ELASTIC_PORT}
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca/ca.crt
+      - ELASTICSEARCH_SSL_VERIFICATIONMODE=certificate
+    ports:
+      - "${KIBANA_PORT}:${KIBANA_PORT}"
+    volumes:
+      - ../../kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+      # Per-component cert isolation (Option 1): Kibana sees only its own key + CA.
+      - ${ELK_CERTS_DIR}/ca:/usr/share/kibana/config/certs/ca:ro
+      - ${ELK_CERTS_DIR}/kibana:/usr/share/kibana/config/certs/kibana:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # kibana-setup:
+  #   image: curlimages/curl:8.6.0
+  #   container_name: kibana-setup
+  #   volumes:
+  #     - ../../kibana:/kibana
+  #   entrypoint: ["/bin/sh", "/kibana/setup.sh"]
+  #   depends_on:
+  #     - kibana
+  #   restart: "no"
+
+# Give the default network a stable, predictable name so app_mock instances
+# can join it as an external network regardless of the project directory name.
+networks:
+  default:
+    name: elk-monitor

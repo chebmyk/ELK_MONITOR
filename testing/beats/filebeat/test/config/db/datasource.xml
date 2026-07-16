@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<datasources>
+    <datasource>
+        <name>app_mock_v2_datasource</name>
+        <driver>org.postgresql.Driver</driver>
+        <url>jdbc:postgresql://localhost:5432/app_mock_v2_db</url>
+        <username>app_user</username>
+        <password>secure_pass_v2</password>
+        <pool_size>10</pool_size>
+    </datasource>
+</datasources>

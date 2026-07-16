@@ -1,0 +1,30 @@
+
+
+
+# logstash.yml — Logstash node settings
+#
+# The license checker and monitoring subsystem connect to Elasticsearch
+# independently of the pipeline outputs. Without credentials here they
+# hit ES as an anonymous user and receive 401.
+#
+# ELASTIC_USER and ELASTIC_PASSWORD are injected by docker-compose / podman
+# via the container environment (see deployment configs).
+
+xpack.monitoring.enabled: false
+xpack.monitoring.elasticsearch.hosts: ["${ELASTIC_SCHEME}://${ELASTIC_HOST}:${ELASTIC_PORT}"]
+xpack.monitoring.elasticsearch.username: "${ELASTIC_USER}"
+xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"
+xpack.monitoring.elasticsearch.ssl.certificate_authority: "/usr/share/logstash/config/certs/ca/ca.crt"
+xpack.monitoring.elasticsearch.ssl.verification_mode: certificate
+
+# Structured JSON logging so the filebeat-elk-infra sidecar can parse log lines.
+# log.path writes to the volume shared with filebeat-elk-infra; without it
+# Logstash logs only to stdout and the shared directory stays empty.
+log.format: json
+log.level: info
+path.logs: /usr/share/logstash/logs
+
+# Suppress "ECS v8 is a preview" grok warning.
+# v1 is the current stable ECS version; update to v8 when it is released
+# and the grok plugin ships updated patterns.
+pipeline.ecs_compatibility: v1

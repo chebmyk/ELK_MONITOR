@@ -1,0 +1,8 @@
+# fingerprint-patterns.txt — glob patterns for fingerprint-scan.sh
+# One pattern per line. Blank lines and lines starting with # are ignored.
+# Patterns support environment variables, e.g. ${APP_HOME}/logs/*.log
+# Absolute paths are globbed directly; simple globs are searched under <scan_dir>.
+
+*.log
+*.xml
+# ${APP_HOME}/logs/*launcher*.log

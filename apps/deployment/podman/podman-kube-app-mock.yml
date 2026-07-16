@@ -1,0 +1,46 @@
+# apps/deployment/podman/podman-kube-app-mock.yml
+#
+# On-demand app_mock pod manifest for podman play kube.
+# Managed by apps/deployment/podman/run_app_server.sh — do not apply directly.
+#
+# app_server.py is baked into the image; only the selected app_config_*
+# directory is mounted as /app at runtime.
+#
+# Placeholders substituted by run_app_server.sh via envsubst:
+#   ${ENV_NAME}           — unique environment name (e.g. staging, uat, prod)
+#   ${APP_DIR}            — absolute path to the app_config_* directory to mount
+#   ${LOGSTASH_HOST}      — Logstash hostname on the elk-monitor network (from .env, default logstash)
+#   ${LOGSTASH_PORT}      — Logstash Beats input port                   (from .env, default 5050)
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-mock-${ENV_NAME}
+  labels:
+    component: app-mock
+    environment: ${ENV_NAME}
+spec:
+  hostname: app-mock-${ENV_NAME}
+  containers:
+    - name: app-mock-${ENV_NAME}
+      image: localhost/app-mock:latest
+      env:
+        - name: LOGSTASH_HOST
+          value: "${LOGSTASH_HOST}"
+        - name: LOGSTASH_PORT
+          value: "${LOGSTASH_PORT}"
+      volumeMounts:
+        - name: app-dir
+          mountPath: /app
+        - name: app-logs
+          mountPath: /var/log/app_mock
+  volumes:
+    - name: app-dir
+      hostPath:
+        path: ${APP_DIR}
+        type: Directory
+    - name: app-logs
+      hostPath:
+        path: ${APP_DIR}/logs
+        type: DirectoryOrCreate

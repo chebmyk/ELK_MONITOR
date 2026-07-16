@@ -1,0 +1,130 @@
+# elastic-agent-test.yml — standalone config for local validation before deployment.
+#
+# Mirrors apps/elastic-agent.yml with paths adjusted for local Windows testing.
+#
+# All paths are relative to the agent home directory
+# (testing/elastic-agent/elastic-agent-9.4.1-windows-x86_64/) because
+# test-elastic-agent.cmd runs elastic-agent.exe from there.
+#
+#   XML config fixtures  → shared with Filebeat test: ../../beats/filebeat/test/config/
+#   Log fixtures         → testing/elastic-agent/test/logs/
+#
+# Usage (via test-elastic-agent.cmd):
+#   --inspect (default)  Validate config structure — no network needed.
+#   --run                Live run against localhost:5050 (start monitor.sh first).
+
+outputs:
+  default:
+    type: logstash
+    hosts:
+      - "${LOGSTASH_HOST}:${LOGSTASH_PORT}"
+
+
+inputs:
+
+  # ── App log files ──────────────────────────────────────────────────────────
+  - id: app-logs-agent
+    type: filestream
+    streams:
+      - id: app-logs-stream
+        paths:
+          - ../test/logs/app.log
+          - ../test/logs/main.log
+          - ../test/logs/worker.log
+          - ../test/logs/scheduler.log
+        scan_frequency: 5s
+        fields:
+          file_type: log
+          type: app_log
+          app: elk_monitor
+
+  # ── App XML config ─────────────────────────────────────────────────────────
+  - id: app-config-agent
+    type: filestream
+    streams:
+      - id: app-config-stream
+        paths:
+          - ../../beats/filebeat/test/config/app.xml
+        scan_frequency: 15s
+        # Content-based identity so in-place overwrites are detected.
+        # length=64 fingerprints files smaller than the 1024-byte default minimum.
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: app_config
+          app: elk_monitor
+        clean_inactive: 24h
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── DB XML config ──────────────────────────────────────────────────────────
+  - id: db-config-agent
+    type: filestream
+    streams:
+      - id: db-config-stream
+        paths:
+          - ../../beats/filebeat/test/config/db/*.xml
+        scan_frequency: 15s
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: app_db_config
+          app: elk_monitor
+        clean_inactive: 24h
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── Config monitor (all XML recursively) ───────────────────────────────────
+  - id: config-monitor-agent
+    type: filestream
+    streams:
+      - id: config-monitor-stream
+        paths:
+          - ../../beats/filebeat/test/config/**/*.xml
+        scan_frequency: 30s
+        prospector.scanner.fingerprint.enabled: true
+        prospector.scanner.fingerprint.length: 64
+        file_identity.fingerprint: ~
+        fields:
+          file_type: xml
+          type: config_monitor
+          app: elk_monitor
+        clean_inactive: 48h
+        parsers:
+          - multiline:
+              type: pattern
+              pattern: '^\s*<\?xml'
+              negate: true
+              match: after
+
+  # ── Heartbeat JSON lines ───────────────────────────────────────────────────
+  - id: app-heartbeat-agent
+    type: filestream
+    streams:
+      - id: app-heartbeat-stream
+        paths:
+          - ../test/logs/heartbeat.log
+        scan_frequency: 5s
+        fields:
+          file_type: json
+          type: heartbeat
+          app: elk_monitor
+
+# ── Disable internal monitoring (no Fleet server available) ──────────────────
+agent:
+  monitoring:
+    enabled: false
+    logs: false
+    metrics: false

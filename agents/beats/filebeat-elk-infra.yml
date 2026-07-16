@@ -1,0 +1,64 @@
+# filebeat-elk-infra.yml — ships Elasticsearch, Logstash, and Kibana internal logs to the
+# Logstash beats input running in the same pod.
+#
+# Mounted read-only into the filebeat-elk-infra sidecar container.
+# All ELK containers write JSON-formatted logs to shared emptyDir volumes;
+# this config reads from the Filebeat-side mount paths.
+
+filebeat.inputs:
+
+  # ── Elasticsearch JSON server log ────────────────────────────────────────────
+  # ES 9.x writes structured JSON logs to <path.logs>/<cluster_name>_server.json.
+  # We collect all *.json files to catch deprecation and slow logs too.
+  - type: filestream
+    id: elk-infra-elasticsearch
+    enabled: true
+    paths:
+      - /elk-infra-logs/elasticsearch/*.json
+    scan_frequency: 10s
+    fields:
+      type: elk_infra_log
+      component: elastic
+
+  # ── Logstash JSON log ─────────────────────────────────────────────────────────
+  # Logstash writes logstash-json.log when log.format: json is set in logstash.yml.
+  - type: filestream
+    id: elk-infra-logstash
+    enabled: true
+    paths:
+      - /elk-infra-logs/logstash/*.log
+    scan_frequency: 10s
+    fields:
+      type: elk_infra_log
+      component: logstash
+
+  # ── Kibana JSON log ───────────────────────────────────────────────────────────
+  # Kibana writes JSON logs to /var/log/kibana/kibana.log when configured via
+  # kibana/kibana.yml (mounted into the kibana container).
+  - type: filestream
+    id: elk-infra-kibana
+    enabled: true
+    paths:
+      - /elk-infra-logs/kibana/*.log
+    scan_frequency: 10s
+    fields:
+      type: elk_infra_log
+      component: kibana
+
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+# ── Output ────────────────────────────────────────────────────────────────────
+# Logstash is a peer container in the same pod. Address it by hostname (defined
+# via hostAliases in the pod spec) rather than localhost for consistency.
+output.logstash:
+  hosts: ["logstash:5050"]
+
+# ── Filebeat data dir ─────────────────────────────────────────────────────────
+# Registry is stored here so already-shipped lines are not re-sent on restart.
+# Mapped to a hostPath volume in podman-kube.yml.
+path.data: /usr/share/filebeat-elk-infra/data
+
+logging.level: warning
+logging.to_files: false

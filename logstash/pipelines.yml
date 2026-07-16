@@ -1,9 +1,57 @@
-# app_pipeline: single beats input on port 5050.
-# Handles heartbeats + XML configs; forwards app_log events to logs_pipeline
-# via pipeline-to-pipeline (no port conflict).
-- pipeline.id: app_pipeline
-  path.config: "/usr/share/logstash/pipeline/app.conf"
+# ╔═══════════════════════════════════════════════════════════════════════════════╗
+# ║  Logstash Pipelines  –  two-tier routing                                    ║
+# ║                                                                              ║
+# ║   beats:5050                                                                 ║
+# ║     └─ main_pipeline (main.conf)        ← routes by category prefix          ║
+# ║          ├─ app_in   → app_dispatch     → leaf app_*    pipelines            ║
+# ║          ├─ elk_in   → elk_dispatch     → leaf elk_*    pipelines            ║
+# ║          └─ mrx_in   → mrx_dispatch     → mrx_logs_in   → leaf mrx_*_log     ║
+# ║                                          → mrx_config_in → leaf mrx_config_* ║
+# ║                                                                              ║
+# ║  Adding a new event TYPE inside an existing category:                        ║
+# ║    1. Edit pipeline/<category>/_dispatch.conf (add a branch).                ║
+# ║    2. Register the new leaf pipeline below.                                  ║
+# ║    No changes to main.conf.                                                  ║
+# ║                                                                              ║
+# ║  Adding a NEW category:                                                      ║
+# ║    1. Create pipeline/<category>/_dispatch.conf with input addr "<cat>_in".  ║
+# ║    2. Add ONE branch in main.conf.                                           ║
+# ║    3. Register dispatcher + leaves below.                                    ║
+# ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-# logs_pipeline: receives app_log events from app_pipeline internal queue.
-- pipeline.id: logs_pipeline
-  path.config: "/usr/share/logstash/pipeline/log.conf"
+# ── main router ──────────────────────────────────────────────────────────────
+- pipeline.id: main_pipeline
+  path.config: "/usr/share/logstash/pipeline/main.conf"
+
+
+# ── app  (pipeline/app/) ────────────────────────────────────────────────────
+# Mock application configs, logs, audits, and health checks.
+
+- pipeline.id: app_dispatch_pipeline
+  path.config: "/usr/share/logstash/pipeline/app/_dispatch.conf"
+
+- pipeline.id: app_config_pipeline
+  path.config: "/usr/share/logstash/pipeline/app/app-config.conf"
+
+- pipeline.id: app_config_audit_pipeline
+  path.config: "/usr/share/logstash/pipeline/app/app-config-audit.conf"
+
+- pipeline.id: app_logs_pipeline
+  path.config: "/usr/share/logstash/pipeline/app/app-logs.conf"
+
+# - pipeline.id: heartbeat_pipeline
+#   path.config: "/usr/share/logstash/pipeline/app/heartbeat.conf"
+
+
+# ── elk  (pipeline/elk/) ────────────────────────────────────────────────────
+# Elasticsearch, Logstash, and Kibana infrastructure logs.
+
+- pipeline.id: elk_dispatch_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/_dispatch.conf"
+
+- pipeline.id: elk_infra_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/elk-infra.conf"
+
+# Generic sink for events that fail parsing in any leaf pipeline.
+- pipeline.id: dropped_events_pipeline
+  path.config: "/usr/share/logstash/pipeline/elk/dropped-events.conf"

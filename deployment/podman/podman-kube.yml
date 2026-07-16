@@ -1,0 +1,102 @@
+# ELK Monitor — Kibana pod
+#
+# DO NOT apply directly. Use run_monitor.sh which substitutes these placeholders:
+#   ${KIBANA_SYSTEM_PASSWORD}   — from .env
+#   ${PROJECT_DIR}              — absolute path to this repo, set by run_monitor.sh
+#   ${ELK_VERSION}              — ELK stack version, e.g. 9.4.1  (from .env)
+#   ${ELASTIC_HOST}             — Elasticsearch hostname (from .env, default elasticsearch)
+#   ${ELASTIC_PORT}             — Elasticsearch HTTP port         (from .env, default 9200)
+#   ${KIBANA_PORT}              — Kibana HTTP port                (from .env, default 5601)
+#
+# Pod is named 'kibana-pod' so it resolves by hostname on the elk-monitor network.
+#
+# run_monitor.sh starts this pod after ES is healthy and kibana_system is
+# provisioned, so no in-container wait loop is needed.
+#
+# App mock environments are managed separately by apps/deployment/podman/run_app_server.sh.
+#
+# Podman container name: kibana-pod-kibana
+
+---
+# ─── Kibana pod ───────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kibana-pod
+  labels:
+    app: elk-monitor
+    component: kibana
+spec:
+  securityContext:
+    seLinuxOptions:
+      type: svirt_sandbox_file_t
+
+  containers:
+    # ── Kibana ────────────────────────────────────────────────────────────────
+    - name: kibana
+      image: docker.elastic.co/kibana/kibana:${ELK_VERSION}
+      # No wait loop needed: run_monitor.sh guarantees kibana_system is provisioned
+      # before this pod is started — use the default Kibana entrypoint.
+      env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://${ELASTIC_HOST}:${ELASTIC_PORT}"
+        - name: ELASTICSEARCH_USERNAME
+          value: kibana_system
+        - name: ELASTICSEARCH_PASSWORD
+          value: "${KIBANA_SYSTEM_PASSWORD}"
+      ports:
+        - containerPort: ${KIBANA_PORT}
+          hostPort: ${KIBANA_PORT}
+          protocol: TCP
+      volumeMounts:
+        - name: kibana-yml
+          mountPath: /usr/share/kibana/config/kibana.yml
+        # Shared with filebeat-elk-infra: Filebeat reads Kibana JSON logs from this volume
+        #- name: kibana-logs
+        #  mountPath: /var/log/kibana
+
+    # # ── Filebeat (elk-infra log collector) ──────────────────────────────────────
+    # - name: filebeat-elk-infra
+    #   image: docker.elastic.co/beats/filebeat:${ELK_VERSION}
+    #   command: ["/usr/share/filebeat/filebeat"]
+    #   args:
+    #     - "-e"
+    #     - "-c"
+    #     - "/usr/share/filebeat-elk-infra/filebeat-elk-infra.yml"
+    #     - "--strict.perms=false"
+    #   volumeMounts:
+    #     - name: filebeat-elk-infra-config
+    #       mountPath: /usr/share/filebeat-elk-infra/filebeat-elk-infra.yml
+    #       readOnly: true
+    #     # - name: es-logs
+    #     #   mountPath: /elk-infra-logs/elasticsearch
+    #     #   readOnly: true
+    #     # - name: logstash-logs
+    #     #   mountPath: /elk-infra-logs/logstash
+    #     #   readOnly: true
+    #     # - name: kibana-logs
+    #     #   mountPath: /elk-infra-logs/kibana
+    #     #   readOnly: true
+    #     # - name: filebeat-elk-infra-data
+    #     #   mountPath: /usr/share/filebeat-elk-infra/data
+
+  volumes:
+    - name: kibana-yml
+      hostPath:
+        path: ${PROJECT_DIR}/kibana/kibana.yml
+        type: File
+
+    # - name: kibana-logs
+    #   hostPath:
+    #     path: ${PROJECT_DIR}/data/elk-logs/kibana
+    #     type: DirectoryOrCreate
+
+    # # ── Filebeat-elk-infra config (host-mounted, read-only) ─────────────────
+    # - name: filebeat-elk-infra-config
+    #   hostPath:
+    #     path: ${PROJECT_DIR}/logstash/filebeat-elk-infra.yml
+    #     type: File
+    # - name: filebeat-elk-infra-data
+    #   hostPath:
+    #     path: ${PROJECT_DIR}/data/filebeat-elk-infra
+    #     type: DirectoryOrCreate

@@ -1,0 +1,42 @@
+FROM python:3.11-slim
+
+# Build-time arguments — override with --build-arg if needed
+ARG ELASTIC_AGENT_VERSION=9.4.1
+ARG ELASTIC_AGENT_ARCH=
+
+# Promote ARGs to ENV so they are reliably available in every RUN layer.
+ENV ELASTIC_AGENT_VERSION=${ELASTIC_AGENT_VERSION} \
+    ELASTIC_AGENT_ARCH=${ELASTIC_AGENT_ARCH}
+
+WORKDIR /app
+
+# app_server.py is baked into the image; config files are mounted at /app at runtime
+
+# Create log directory
+RUN mkdir -p /var/log/app_mock && chmod 777 /var/log/app_mock
+
+# Download and install Elastic Agent (standalone tarball).
+# Same arch-detection logic as Dockerfile (Filebeat variant).
+# curl -f makes HTTP errors fatal instead of silently saving an HTML error page.
+RUN apt-get update && apt-get install -y curl && \
+    _RAW="${ELASTIC_AGENT_ARCH:-$(dpkg --print-architecture 2>/dev/null || echo amd64)}" && \
+    case "$_RAW" in \
+      amd64|x86_64)    EA_ARCH=x86_64 ;; \
+      arm64|aarch64)   EA_ARCH=aarch64 ;; \
+      *) echo "Unsupported arch: $_RAW" && exit 1 ;; \
+    esac && \
+    curl -fL -O "https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-${ELASTIC_AGENT_VERSION}-linux-${EA_ARCH}.tar.gz" && \
+    tar xzf "elastic-agent-${ELASTIC_AGENT_VERSION}-linux-${EA_ARCH}.tar.gz" && \
+    rm  "elastic-agent-${ELASTIC_AGENT_VERSION}-linux-${EA_ARCH}.tar.gz" && \
+    mv  "elastic-agent-${ELASTIC_AGENT_VERSION}-linux-${EA_ARCH}" /elastic-agent && \
+    chmod +x /elastic-agent/elastic-agent
+
+# Copy Elastic Agent configuration (standalone — no Fleet enrollment)
+COPY elastic-agent.yml /elastic-agent/elastic-agent.yml
+
+# Copy application entrypoint
+COPY app_server.py /app_server.py
+
+# Start both the mock app and Elastic Agent.
+# -e routes Agent logs to stderr so they appear in `docker logs` / `podman logs`.
+CMD ["sh", "-c", "python3 /app_server.py & /elastic-agent/elastic-agent run -c /elastic-agent/elastic-agent.yml -e"]

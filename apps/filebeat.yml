@@ -33,13 +33,19 @@ filebeat.inputs:
       type: app_log
       app: elk_monitor
 
-  # --- Input for XML config files (read-once or rarely updated) ---
+  # --- Input for XML config files (re-send when file content changes) ---
   - type: filestream
     id: app-config-filebeat
     enabled: true
     paths:
       - /app/config/app.xml
     scan_frequency: 15s
+    # Use content fingerprint so in-place overwrites are detected and re-shipped.
+    # Default 'native' identity tracks by offset and misses same-path rewrites.
+    # length=64 allows fingerprinting files smaller than the default 1024-byte minimum.
+    prospector.scanner.fingerprint.enabled: true
+    prospector.scanner.fingerprint.length: 64
+    file_identity.fingerprint: ~
     fields:
       file_type: xml
       type: app_config
@@ -53,17 +59,21 @@ filebeat.inputs:
           negate: true
           match: after
 
+
   - type: filestream
     id: db-config-filebeat
     enabled: true
     paths:
       - /app/config/db/*.xml
     scan_frequency: 15s
+    prospector.scanner.fingerprint.enabled: true
+    prospector.scanner.fingerprint.length: 64
+    file_identity.fingerprint: ~
     fields:
       file_type: xml
       type: app_db_config
       app: elk_monitor
-    clean_inactive: 24h
+    #clean_inactive: 24h
     parsers:
       - multiline:
           type: pattern
@@ -72,19 +82,22 @@ filebeat.inputs:
           match: after
 
   # --- Config monitor: scans all XML files recursively under /app/config ---
-  # Ships only when file mtime changes; hash-based dedup in Logstash prevents
+  # Re-ships when file content changes; hash-based dedup in Logstash prevents
   # false updates from formatting-only changes.
   - type: filestream
     id: config-monitor-filebeat
     enabled: true
     paths:
       - /app/config/**/*.xml
-    scan_frequency: 30s
+    scan_frequency: 15s
+    prospector.scanner.fingerprint.enabled: true
+    prospector.scanner.fingerprint.length: 64
+    file_identity.fingerprint: ~
     fields:
       file_type: xml
-      type: config_monitor
+      type: app_config_change
       app: elk_monitor
-    clean_inactive: 48h
+    #clean_inactive: 48h
     parsers:
       - multiline:
           type: pattern
@@ -93,16 +106,19 @@ filebeat.inputs:
           match: after
 
   # --- Input for JSON heartbeat lines (one line per service per cycle) ---
-  - type: filestream
-    id: app-heartbeat-filebeat
-    enabled: true
-    paths:
-      - /var/log/app_mock/heartbeat.log
-    scan_frequency: 5s
-    fields:
-      file_type: json
-      type: heartbeat
-      app: elk_monitor
+  # - type: filestream
+  #   id: app-heartbeat-filebeat
+  #   enabled: true
+  #   paths:
+  #     - /var/log/app_mock/heartbeat.log
+  #   scan_frequency: 5s
+  #   fields:
+  #     file_type: json
+  #     type: heartbeat
+  #     app: elk_monitor
+
+
+  
   # Exclude lines. A list of regular expressions to match. It drops the lines that are
   # matching any regular expression from the list.
   # Line filtering happens after the parsers pipeline. If you would like to filter lines
@@ -226,7 +242,9 @@ setup.kibana:
 # ------------------------------ Logstash Output -------------------------------
 output.logstash:
   # The Logstash hosts
-  hosts: ["logstash:5050"]
+  # LOGSTASH_HOST and LOGSTASH_PORT are injected as container env vars
+  # by run_app_server.sh via podman-kube-app-mock.yml (sourced from .env).
+  hosts: ["${LOGSTASH_HOST}:${LOGSTASH_PORT}"]
 
   # Optional SSL. By default is off.
   # List of root certificates for HTTPS server verifications
@@ -242,9 +260,9 @@ output.logstash:
 processors:
   - add_host_metadata:
       when.not.contains.tags: forwarded
-  - add_cloud_metadata: ~
-  - add_docker_metadata: ~
-  - add_kubernetes_metadata: ~
+  # - add_cloud_metadata: ~
+  # - add_docker_metadata: ~
+  # - add_kubernetes_metadata: ~
 
 # ================================== Logging ===================================
 
