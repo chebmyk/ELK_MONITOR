@@ -13,6 +13,7 @@ outputs:
       - "logstash:5050"
 
 
+
 # all inputs are in single yml cofig file under inputs.d directory
 
 agent:
@@ -20,3 +21,21 @@ agent:
     enabled: false
     logs: false
     metrics: false
+
+
+# agent.logging.level: debug
+agent.logging.to_files: true
+agent.logging.files:
+  path: logs
+  name: elastic-agent
+  keepfiles: 7
+  permissions: 0600
+
+
+agent.logging.event_data.to_files: true
+agent.logging.event_data.path: logs/events
+agent.logging.event_data.files.name: elastic-agent-event-data
+
+agent.logging.metrics.enabled: false
+agent.logging.metrics.period: 600s
+

@@ -1,0 +1,70 @@
+	
+✄𐘗json code block:✄𐘗
+{
+  "sources": {
+    "app_config": {
+      "path": "/Murex/IFC_TEST/.ci/mxpack.xml",
+      "status": "ok",
+      "last_modified": "2026-07-13 01:26:02.931592692 -0400",
+      "fields": {
+        "environment": "8196933-260409-1905-7389572",
+        "version": "8196933",
+        "name": "v3.1.60.25.en"
+      },
+      "type": "xml",
+      "errors": []
+    },
+    "datasource_config": {
+      "path": "/Murex/IFC_TEST/fs/public/mxres/common/dbconfig/dbsource.mxres",
+      "status": "ok",
+      "last_modified": "2026-07-10 00:44:01.020588280 -0400",
+      "fields": {
+        "environment": "MRXT1.client.itstr1testqaouo.oraclevcn.com",
+        "version": "5997",
+        "name": "tretqa-szt2u-scan.client.itstr1testqaouo.oraclevcn.com"
+      },
+      "type": "xml",
+      "errors": []
+    },
+    "application_alias": {
+      "path": "/Murex/IFC_TEST/fs/public/mxres/guiclient/profile/client.mxres",
+      "status": "ok",
+      "last_modified": "2026-05-14 18:58:32.000000000 -0400",
+      "fields": {
+        "name": "IBRD-T2CI-IMPL-3.1.60.25.of.1"
+      },
+      "type": "xml",
+      "errors": []
+    },
+    "web_client": {
+      "path": "/Murex/IFC_TEST/fs/public/services/web-client/load-balancer.properties",
+      "status": "ok",
+      "last_modified": "2026-07-10 00:01:06.849354701 -0400",
+      "fields": {
+        "frontend_protocol": "https",
+        "frontend_bind_port": "10015",
+        "frontend_vhost": "tre0lxmrxcicd01.worldbank.org",
+        "frontend_port": "10016"
+      },
+      "type": "properties",
+      "errors": []
+    }
+  },
+  "mrx": {
+    "config_last_modified": "2026-07-15T20:04:21.093Z"
+  },
+  "snapshot": {
+    "mrx.server.buildId": "8196933-260409-1905-7389572",
+    "mrx.web_client.frontend.vhost": "tre0lxmrxcicd01.worldbank.org",
+    "mrx.server.version": "v3.1.60.25.en",
+    "mrx.web_client.frontend.protocol": "https",
+    "mrx.server.revision": "8196933",
+    "mrx.datasource.dbhost": "tretqa-szt2u-scan.client.itstr1testqaouo.oraclevcn.com",
+    "mrx.web_client.frontend.port": "10016",
+    "mrx.web_client.frontend.bind_port": "10015",
+    "mrx.environmnet.name": "IBRD-T2CI-IMPL-3.1.60.25.of.1",
+    "mrx.datasource.dbservice": "MRXT1.client.itstr1testqaouo.oraclevcn.com",
+    "mrx.datasource.dbport": "5997"
+  },
+  "generated_at": "2026-07-15T16:04:03-0400"
+}

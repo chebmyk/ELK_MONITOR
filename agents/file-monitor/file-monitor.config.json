@@ -1,0 +1,73 @@
+{
+  "schedule": {
+    "mode": "cron",
+    "expression": "*/1 * * * *"
+  },
+  "output": {
+    "format": "json",
+    "path": "${WB_MUREX_HOME}/mrx-env-config-snapshot.json"
+  },
+  "files": [
+    {
+      "id": "server_config",
+      "type": "xml",
+      "path": "${WB_MUREX_HOME}/.ci/mxpack.xml",
+      "fields": {
+        "name": {
+          "xpath": "/mxpack/package[id='mxPrimary']/version/text()",
+          "target": "mrx.server.version"
+        },
+        "version": {
+          "xpath": "/mxpack/package[id='mxPrimary']/revision/text()",
+          "target": "mrx.server.revision"
+        },
+        "environment": {
+          "xpath": "/mxpack/package[id='mxPrimary']/buildId/text()",
+          "target": "mrx.server.buildId"
+        }
+      }
+    },
+    {
+      "id": "web_client",
+      "type": "properties",
+      "path": "${WB_MUREX_HOME}/fs/public/services/web-client/load-balancer.properties",
+      "fields": {
+        "frontend_protocol": {
+          "regex": "^frontend\\.protocol=(.+)$",
+          "target": "mrx.web_client.frontend.protocol"
+        },
+        "frontend_bind_port": {
+          "regex": "^frontend\\.bind\\.port=(.+)$",
+          "target": "mrx.web_client.frontend.bind_port"
+        },
+        "frontend_vhost": {
+          "regex": "^frontend\\.vhost=(.+)$",
+          "target": "mrx.web_client.frontend.vhost"
+        },
+        "frontend_port": {
+          "regex": "^frontend\\.port=(.+)$",
+          "target": "mrx.web_client.frontend.port"
+        }
+      }
+    },
+    {
+      "id": "datasource_config",
+      "type": "xml",
+      "path": "${WB_MUREX_HOME}/fs/public/mxres/common/dbconfig/dbsource.mxres",
+      "fields": {
+        "name": {
+          "xpath": "/DbSource/MxAnchors/MxAnchor/DbHostName/text()",
+          "target": "mrx.datasource.dbhost"
+        },
+        "version": {
+          "xpath": "/DbSource/MxAnchors/MxAnchor/DbServerPortNumber/text()",
+          "target": "mrx.datasource.dbport"
+        },
+        "environment": {
+          "xpath": "/DbSource/MxAnchors/MxAnchor/DbServerOrServiceName/text()",
+          "target": "mrx.datasource.dbservice"
+        }
+      }
+    }
+  ]
+}
