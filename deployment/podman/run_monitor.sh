@@ -48,14 +48,27 @@ ELASTIC_SCHEME="${ELASTIC_SCHEME:-https}"
 ELK_CERTS_DIR="${ELK_CERTS_DIR:-${PROJECT_DIR}/certs}"
 CA_CERT="${ELK_CERTS_DIR}/ca/ca.crt"
 
+PODMAN_HOSTNAME="${PODMAN_HOSTNAME:-$(hostname)}"
+
+export PODMAN_HOSTNAME
 export PROJECT_DIR ELK_CERTS_DIR ELASTIC_SCHEME
 
 NETWORK="elk-monitor"
 # run_monitor.sh runs on the host, not inside the Podman network.
 # ${ELASTIC_HOST} (e.g. elasticsearch-pod) is only a DNS name inside the network.
 # Use localhost here because the ES pod maps hostPort:${ELASTIC_PORT}.
-ES_URL="${ELASTIC_SCHEME}://localhost:${ELASTIC_PORT}"
+ES_URL="${ELASTIC_SCHEME}://${PODMAN_HOSTNAME}:${ELASTIC_PORT}"
 ES_AUTH="elastic:${ELASTIC_PASSWORD}"
+
+
+echo "================================================================"
+echo "ELASTIC_SCHEME:$ELASTIC_SCHEME"
+echo "ELK_CERTS_DIR:$ELK_CERTS_DIR"
+echo "CA_CERT:$CA_CERT"
+echo "PROJECT_DIR:$PROJECT_DIR"
+echo ""
+echo "================================================================"
+
 
 CMD="${1:-up}"
 SERVICE="${2:-}"
@@ -188,8 +201,8 @@ case "$CMD" in
     echo "────────────────────────────────────────"
     echo "  Stack is up"
     echo "  Elasticsearch : ${ES_URL}           (user: elastic)"
-    echo "  Kibana        : ${KIBANA_SCHEME}://localhost:${KIBANA_PORT}  (user: elastic)"
-    echo "  Logstash beats: localhost:${LOGSTASH_PORT}"
+    echo "  Kibana        : ${KIBANA_SCHEME}://${PODMAN_HOSTNAME}:${KIBANA_PORT}  (user: elastic)"
+    echo "  Logstash beats: ${PODMAN_HOSTNAME}:${LOGSTASH_PORT}"
     echo "  CA cert       : ${CA_CERT}"
     echo "────────────────────────────────────────"
     ;;

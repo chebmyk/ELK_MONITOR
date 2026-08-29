@@ -56,7 +56,7 @@ spec:
               curl -sf
               --cacert /usr/share/elasticsearch/config/certs/ca/ca.crt
               -u "elastic:${ELASTIC_PASSWORD}"
-              "https://localhost:${ELASTIC_PORT}/_cluster/health?wait_for_status=yellow&timeout=3s"
+              "https://${PODMAN_HOSTNAME}:${ELASTIC_PORT}/_cluster/health?wait_for_status=yellow&timeout=3s"
               >/dev/null
         initialDelaySeconds: 30
         periodSeconds: 10

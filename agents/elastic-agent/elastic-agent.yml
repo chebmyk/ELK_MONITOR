@@ -38,4 +38,3 @@ agent.logging.event_data.files.name: elastic-agent-event-data
 
 agent.logging.metrics.enabled: false
 agent.logging.metrics.period: 600s
-
